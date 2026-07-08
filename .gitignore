@@ -1,0 +1,35 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# ===== Moi truong ao =====
+.venv/
+venv/
+env/
+
+# ===== Model weights / ban export =====
+*.pt
+*.onnx
+*.engine
+*_openvino_model/
+
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ===== Logs / tam =====
+*.log
+*.tmp
+
+# ===== Anh nguoi dung tu copy vao (giu thu muc, bo file) =====
+services/hand_gesture_controller/images/*
+!services/hand_gesture_controller/images/.gitkeep
+
+# ===== Du lieu thong ke People Counter (giu thu muc, bo file) =====
+services/people_counter/data/*
+!services/people_counter/data/.gitkeep

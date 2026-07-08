@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Engineer – Điều hướng Services</title>
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --text:#e2e8f0; --muted:#94a3b8; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:32px 24px 8px; text-align:center; }
+    header h1 { margin:0; font-size:26px; }
+    header p { color:var(--muted); margin:8px 0 0; }
+    main { max-width:900px; margin:0 auto; padding:24px; display:grid; gap:20px; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); }
+    .card { background:var(--card); border:1px solid #334155; border-radius:14px; padding:22px; display:flex; flex-direction:column; }
+    .card h2 { margin:0 0 6px; font-size:19px; }
+    .tag { display:inline-block; font-size:12px; color:var(--accent); border:1px solid var(--accent); border-radius:999px; padding:2px 10px; margin-bottom:12px; width:fit-content; }
+    .card p { color:var(--muted); font-size:14px; line-height:1.55; flex:1; }
+    .card ul { color:var(--muted); font-size:13px; padding-left:18px; margin:8px 0 16px; }
+    button { background:var(--accent); color:#082f49; border:none; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:600; cursor:pointer; transition:.15s; }
+    button:hover { filter:brightness(1.08); }
+    button:active { transform:scale(.98); }
+    #status { max-width:900px; margin:0 auto 32px; padding:0 24px; }
+    .toast { background:#134e4a; border:1px solid #2dd4bf; color:#ccfbf1; padding:12px 16px; border-radius:10px; font-size:14px; }
+    .toast.err { background:#4c1d1d; border-color:#f87171; color:#fecaca; }
+    footer { text-align:center; color:var(--muted); font-size:12px; padding:0 24px 32px; }
+    code { background:#0b1220; padding:2px 6px; border-radius:5px; color:#e2e8f0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 AI Engineer – Điều hướng Services</h1>
+    <p>Bấm để khởi chạy service. Mỗi service mở trong một cửa sổ riêng.</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <span class="tag">Camera · OpenVINO</span>
+      <h2>🎯 Object Detection</h2>
+      <p>Phát hiện vật thể qua camera và gán nhãn (người, mèo, chó, xe, ...). Tối ưu cho Intel UHD 620 / Iris Xe.</p>
+      <ul>
+        <li>Nhấn <code>Q</code> hoặc <code>ESC</code> để thoát.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_object_detection.bat</code> trước.</li>
+      </ul>
+      <button onclick="launch('object_detection')">Khởi chạy</button>
+    </div>
+
+    <div class="card">
+      <span class="tag">Camera · MediaPipe</span>
+      <h2>✋ Hand Gesture Controller</h2>
+      <p>Điều khiển ảnh bằng cử chỉ tay: quẹt trái/phải để đổi ảnh, giơ 5 ngón để vào chế độ xoay ảnh.</p>
+      <ul>
+        <li>Copy ảnh vào <code>services\hand_gesture_controller\images\</code>.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_hand_gesture.bat</code> trước.</li>
+      </ul>
+      <button onclick="launch('hand_gesture')">Khởi chạy</button>
+    </div>
+
+    <div class="card">
+      <span class="tag">Camera · Tracking · Dashboard</span>
+      <h2>📊 People Counter</h2>
+      <p>Đếm người qua camera, đếm lượt vào/ra khi qua vạch bạn vẽ. Kèm dashboard phân tích số lượng & tỉ lệ theo phút.</p>
+      <ul>
+        <li>Click 2 điểm để vẽ vạch · <code>F</code> đảo chiều · <code>C</code> reset.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_people_counter.bat</code> trước.</li>
+      </ul>
+      <div style="display:flex; gap:10px;">
+        <button style="flex:1;" onclick="launch('people_counter')">Khởi chạy</button>
+        <button style="flex:1; background:#334155; color:#e2e8f0;" onclick="location.href='/counter.html'">Mở Dashboard</button>
+      </div>
+    </div>
+  </main>
+
+  <div id="status"></div>
+  <footer>ai-engineer · dashboard cục bộ · http://localhost:8000</footer>
+
+  <script>
+    async function launch(service) {
+      const box = document.getElementById('status');
+      box.innerHTML = '';
+      try {
+        const res = await fetch('/api/launch?service=' + encodeURIComponent(service), { method: 'POST' });
+        const data = await res.json();
+        box.innerHTML = '<div class="toast' + (data.ok ? '' : ' err') + '">' + data.message + '</div>';
+      } catch (e) {
+        box.innerHTML = '<div class="toast err">Lỗi kết nối server: ' + e + '</div>';
+      }
+    }
+  </script>
+</body>
+</html>

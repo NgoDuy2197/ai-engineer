@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>People Counter – Dashboard</title>
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --green:#34d399; --orange:#fbbf24; --text:#e2e8f0; --muted:#94a3b8; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
+    header h1 { margin:0; font-size:22px; }
+    header a { color:var(--accent); text-decoration:none; font-size:14px; }
+    .status { font-size:13px; color:var(--muted); }
+    .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:#64748b; margin-right:6px; }
+    .dot.live { background:var(--green); box-shadow:0 0 8px var(--green); }
+    main { max-width:1000px; margin:0 auto; padding:0 24px 40px; }
+    .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin-bottom:20px; }
+    .kpi { background:var(--card); border:1px solid #334155; border-radius:12px; padding:18px; }
+    .kpi .label { color:var(--muted); font-size:13px; }
+    .kpi .value { font-size:34px; font-weight:700; margin-top:6px; }
+    .kpi .value.green { color:var(--green); }
+    .kpi .value.orange { color:var(--orange); }
+    .kpi .value.blue { color:var(--accent); }
+    .chart-card { background:var(--card); border:1px solid #334155; border-radius:12px; padding:20px; }
+    .chart-card h2 { margin:0 0 4px; font-size:16px; }
+    .chart-card p { margin:0 0 14px; color:var(--muted); font-size:13px; }
+    canvas { width:100%; height:280px; }
+    .empty { color:var(--muted); font-size:14px; padding:20px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>📊 People Counter – Dashboard</h1>
+      <div class="status"><span id="dot" class="dot"></span><span id="statusText">Đang chờ dữ liệu…</span></div>
+    </div>
+    <a href="/">← Về trang điều hướng</a>
+  </header>
+
+  <main>
+    <div class="grid">
+      <div class="kpi"><div class="label">Đang trong khung</div><div class="value blue" id="k_current">0</div></div>
+      <div class="kpi"><div class="label">Tổng người thấy</div><div class="value" id="k_seen">0</div></div>
+      <div class="kpi"><div class="label">Vào quán</div><div class="value green" id="k_in">0</div></div>
+      <div class="kpi"><div class="label">Ra</div><div class="value orange" id="k_out">0</div></div>
+      <div class="kpi"><div class="label">Đang trong quán</div><div class="value" id="k_inside">0</div></div>
+      <div class="kpi"><div class="label">Tỉ lệ chuyển đổi</div><div class="value blue" id="k_conv">0%</div></div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Lượt vào / ra theo phút</h2>
+      <p>15 phút gần nhất · cập nhật tự động mỗi 1.5s</p>
+      <canvas id="chart" width="960" height="280"></canvas>
+      <div id="chartEmpty" class="empty" style="display:none;">Chưa có dữ liệu. Hãy chạy service People Counter.</div>
+    </div>
+  </main>
+
+  <script>
+    function pct(x) { return Math.round((x || 0) * 100) + '%'; }
+
+    function drawChart(labels, inSeries, outSeries) {
+      const c = document.getElementById('chart');
+      const ctx = c.getContext('2d');
+      const W = c.width, H = c.height, padL = 34, padB = 28, padT = 12, padR = 10;
+      ctx.clearRect(0, 0, W, H);
+      const maxV = Math.max(1, ...inSeries, ...outSeries);
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+
+      // luoi + nhan truc Y
+      ctx.strokeStyle = '#334155'; ctx.fillStyle = '#94a3b8';
+      ctx.font = '11px Segoe UI'; ctx.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + plotH * i / 4;
+        const val = Math.round(maxV * (4 - i) / 4);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+        ctx.fillText(val, padL - 5, y + 3);
+      }
+
+      const n = labels.length;
+      const slot = plotW / n;
+      const bw = Math.min(18, slot / 2 - 2);
+      ctx.textAlign = 'center';
+      for (let i = 0; i < n; i++) {
+        const cx = padL + slot * i + slot / 2;
+        const hIn = plotH * inSeries[i] / maxV;
+        const hOut = plotH * outSeries[i] / maxV;
+        // vao (xanh)
+        ctx.fillStyle = '#34d399';
+        ctx.fillRect(cx - bw - 1, padT + plotH - hIn, bw, hIn);
+        // ra (cam)
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(cx + 1, padT + plotH - hOut, bw, hOut);
+        if (i % 2 === 0) { ctx.fillStyle = '#94a3b8'; ctx.fillText(labels[i], cx, H - 8); }
+      }
+      // chu thich
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#34d399'; ctx.fillRect(padL, padT, 10, 10);
+      ctx.fillStyle = '#94a3b8'; ctx.fillText('Vào', padL + 14, padT + 9);
+      ctx.fillStyle = '#fbbf24'; ctx.fillRect(padL + 50, padT, 10, 10);
+      ctx.fillStyle = '#94a3b8'; ctx.fillText('Ra', padL + 64, padT + 9);
+    }
+
+    async function tick() {
+      try {
+        const res = await fetch('/api/stats', { cache: 'no-store' });
+        const s = await res.json();
+        const age = s.updated ? (Date.now() / 1000 - s.updated) : 999;
+        const live = age < 5;
+        document.getElementById('dot').className = 'dot' + (live ? ' live' : '');
+        document.getElementById('statusText').textContent =
+          live ? 'Đang nhận dữ liệu trực tiếp' : 'Service chưa chạy (dữ liệu cũ / trống)';
+
+        document.getElementById('k_current').textContent = s.current || 0;
+        document.getElementById('k_seen').textContent = s.total_seen || 0;
+        document.getElementById('k_in').textContent = s.in_count || 0;
+        document.getElementById('k_out').textContent = s.out_count || 0;
+        document.getElementById('k_inside').textContent = s.inside || 0;
+        document.getElementById('k_conv').textContent = pct(s.conversion);
+
+        const pm = s.per_minute || { labels: [], in: [], out: [] };
+        const hasData = (pm.in || []).some(v => v > 0) || (pm.out || []).some(v => v > 0);
+        document.getElementById('chartEmpty').style.display = hasData ? 'none' : 'block';
+        document.getElementById('chart').style.display = hasData ? 'block' : 'none';
+        if (hasData) drawChart(pm.labels, pm.in, pm.out);
+      } catch (e) {
+        document.getElementById('statusText').textContent = 'Không kết nối được server.';
+      }
+    }
+    tick();
+    setInterval(tick, 1500);
+  </script>
+</body>
+</html>

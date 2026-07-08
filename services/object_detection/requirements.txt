@@ -1,0 +1,5 @@
+# Object Detection - toi uu Intel qua OpenVINO
+ultralytics>=8.1.0
+openvino>=2024.0.0
+opencv-python>=4.8.0
+numpy<2.0

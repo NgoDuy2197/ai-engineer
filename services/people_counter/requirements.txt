@@ -1,0 +1,6 @@
+# People Counter - YOLO tracking + OpenVINO (toi uu Intel)
+ultralytics>=8.1.0
+openvino>=2024.0.0
+opencv-python>=4.8.0
+numpy<2.0
+lapx>=0.5.11
