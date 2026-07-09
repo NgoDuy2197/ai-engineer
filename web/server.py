@@ -27,6 +27,7 @@ SERVICES = {
     "air_painter": "start_air_painter.bat",
     "fitness_coach": "start_fitness_coach.bat",
     "security_cam": "start_security_cam.bat",
+    "fruit_catch": "start_fruit_catch.bat",
 }
 
 DEFAULT_STATS = {

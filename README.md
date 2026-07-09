@@ -24,7 +24,8 @@ ai-engineer/
    ├─ movement_heatmap/       # Bản đồ nhiệt: người đi/đứng lâu chỗ nào thì màu càng đậm
    ├─ air_painter/            # Vẽ trong không khí bằng ngón tay (MediaPipe Hands)
    ├─ fitness_coach/          # Đếm squat / gập tay qua góc khớp (MediaPipe Pose)
-   └─ security_cam/           # Camera an ninh: có người thì báo động + chụp ảnh + log
+   ├─ security_cam/           # Camera an ninh: có người thì báo động + chụp ảnh + log
+   └─ fruit_catch/            # Game hứng hoa quả bằng khuôn mặt + pháo hoa
 ```
 
 ## Yêu cầu
@@ -52,6 +53,7 @@ ai-engineer/
 - Bật vẽ trong không khí: `__bat\start_air_painter.bat`
 - Bật đếm số lần tập: `__bat\start_fitness_coach.bat`
 - Bật camera an ninh: `__bat\start_security_cam.bat`
+- Chơi game hứng hoa quả: `__bat\start_fruit_catch.bat`
 
 > Lần đầu chạy `start_*.bat`, nếu chưa setup thì nó sẽ tự chạy setup trước.
 
