@@ -20,7 +20,11 @@ ai-engineer/
 └─ services/
    ├─ object_detection/       # Phát hiện vật thể qua camera + gán nhãn (người, mèo, ...)
    ├─ hand_gesture_controller/# Điều khiển ảnh bằng cử chỉ tay
-   └─ people_counter/         # Đếm người + đếm vào/ra qua vạch + dashboard theo phút
+   ├─ people_counter/         # Đếm người + đếm vào/ra qua vạch + dashboard theo phút
+   ├─ movement_heatmap/       # Bản đồ nhiệt: người đi/đứng lâu chỗ nào thì màu càng đậm
+   ├─ air_painter/            # Vẽ trong không khí bằng ngón tay (MediaPipe Hands)
+   ├─ fitness_coach/          # Đếm squat / gập tay qua góc khớp (MediaPipe Pose)
+   └─ security_cam/           # Camera an ninh: có người thì báo động + chụp ảnh + log
 ```
 
 ## Yêu cầu
@@ -44,6 +48,10 @@ ai-engineer/
 - Bật phát hiện vật thể: `__bat\start_object_detection.bat`
 - Bật điều khiển cử chỉ: `__bat\start_hand_gesture.bat`
 - Bật đếm người: `__bat\start_people_counter.bat` (xem dashboard tại `http://localhost:8000/counter.html`)
+- Bật bản đồ nhiệt: `__bat\start_movement_heatmap.bat`
+- Bật vẽ trong không khí: `__bat\start_air_painter.bat`
+- Bật đếm số lần tập: `__bat\start_fitness_coach.bat`
+- Bật camera an ninh: `__bat\start_security_cam.bat`
 
 > Lần đầu chạy `start_*.bat`, nếu chưa setup thì nó sẽ tự chạy setup trước.
 

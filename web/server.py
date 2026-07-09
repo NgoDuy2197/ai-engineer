@@ -23,6 +23,10 @@ SERVICES = {
     "object_detection": "start_object_detection.bat",
     "hand_gesture": "start_hand_gesture.bat",
     "people_counter": "start_people_counter.bat",
+    "movement_heatmap": "start_movement_heatmap.bat",
+    "air_painter": "start_air_painter.bat",
+    "fitness_coach": "start_fitness_coach.bat",
+    "security_cam": "start_security_cam.bat",
 }
 
 DEFAULT_STATS = {

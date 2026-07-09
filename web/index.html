@@ -69,6 +69,50 @@
         <button style="flex:1; background:#334155; color:#e2e8f0;" onclick="location.href='/counter.html'">Mở Dashboard</button>
       </div>
     </div>
+
+    <div class="card">
+      <span class="tag">Camera · Tracking · Heatmap</span>
+      <h2>🔥 Movement Heatmap</h2>
+      <p>Cộng dồn "nhiệt" vào nơi người đi qua/đứng lâu — càng nhiều lượt càng đậm (xanh → vàng → đỏ). Thấy rõ luồng di chuyển & điểm dừng lâu.</p>
+      <ul>
+        <li><code>H</code> bật/tắt heatmap · <code>S</code> lưu ảnh · <code>C</code> reset.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_movement_heatmap.bat</code> trước.</li>
+      </ul>
+      <button onclick="launch('movement_heatmap')">Khởi chạy</button>
+    </div>
+
+    <div class="card">
+      <span class="tag">Camera · MediaPipe</span>
+      <h2>🎨 Air Painter</h2>
+      <p>Vẽ trong không khí bằng đầu ngón tay — 1 ngón để vẽ, 2 ngón để chọn màu trên thanh công cụ. Có cục tẩy, đổi cỡ bút, lưu tranh.</p>
+      <ul>
+        <li><code>1 ngón</code> vẽ · <code>2 ngón</code> chọn · <code>C</code> xóa · <code>S</code> lưu.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_air_painter.bat</code> trước.</li>
+      </ul>
+      <button onclick="launch('air_painter')">Khởi chạy</button>
+    </div>
+
+    <div class="card">
+      <span class="tag">Camera · MediaPipe Pose</span>
+      <h2>💪 Fitness Coach</h2>
+      <p>Đếm số lần tập tự động qua góc khớp: squat (đầu gối) hoặc gập tay (khuỷu). Có thanh phần trăm độ sâu để canh động tác.</p>
+      <ul>
+        <li><code>E</code> đổi bài tập · <code>C</code> reset bộ đếm.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_fitness_coach.bat</code> trước.</li>
+      </ul>
+      <button onclick="launch('fitness_coach')">Khởi chạy</button>
+    </div>
+
+    <div class="card">
+      <span class="tag">Camera · YOLO · An ninh</span>
+      <h2>🛡️ Smart Security Cam</h2>
+      <p>Canh chừng bằng camera: có người thì báo động (viền đỏ + beep), tự chụp ảnh bằng chứng vào <code>data/</code> và ghi log sự kiện.</p>
+      <ul>
+        <li><code>M</code> bật/tắt tiếng · <code>S</code> chụp ngay · <code>C</code> reset.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_security_cam.bat</code> trước.</li>
+      </ul>
+      <button onclick="launch('security_cam')">Khởi chạy</button>
+    </div>
   </main>
 
   <div id="status"></div>
