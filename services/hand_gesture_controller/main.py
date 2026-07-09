@@ -2,8 +2,9 @@
 Service: Hand Gesture Controller (dieu khien anh bang cu chi tay).
 
 Cu chi:
-  - Quet trai        -> anh truoc
-  - Quet phai        -> anh sau
+  - Gio 1 ngon (ngon tro) roi luot trai/phai -> doi anh (nhay)
+  - Gio 2 ngon             -> reset anh ve trang thai ban dau (het xoay)
+  - Gio 3 hoac 4 ngon      -> hien so ngon to giua man hinh roi tu bien mat
   - Gio 5 ngon (giu ~0.8s) -> vao che do XOAY anh
   - Trong che do XOAY: nghieng ban tay de xoay anh
   - Nam tay (giu ~0.8s)    -> thoat che do XOAY
@@ -21,8 +22,30 @@ from collections import deque
 import cv2
 import numpy as np
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
 
 IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+
+# Ket noi cac diem landmark ban tay (thay cho mp.solutions.hands.HAND_CONNECTIONS,
+# vi ban mediapipe cho Python 3.13 chi con Tasks API, khong con "solutions").
+HAND_CONNECTIONS = [
+    (0, 1), (1, 2), (2, 3), (3, 4),          # ngon cai
+    (0, 5), (5, 6), (6, 7), (7, 8),          # ngon tro
+    (5, 9), (9, 10), (10, 11), (11, 12),     # ngon giua
+    (9, 13), (13, 14), (14, 15), (15, 16),   # ngon ap ut
+    (13, 17), (17, 18), (18, 19), (19, 20),  # ngon ut
+    (0, 17),                                 # long ban tay
+]
+
+
+def draw_hand(frame, pts):
+    """Ve khung xuong ban tay (thay cho mp.solutions.drawing_utils)."""
+    for a, b in HAND_CONNECTIONS:
+        cv2.line(frame, (int(pts[a][0]), int(pts[a][1])),
+                 (int(pts[b][0]), int(pts[b][1])), (0, 255, 0), 2)
+    for x, y in pts:
+        cv2.circle(frame, (int(x), int(y)), 3, (0, 0, 255), -1)
 
 
 def load_images(folder):
@@ -95,18 +118,33 @@ def main():
         print("[!] Khong mo duoc camera")
         return
 
-    hands = mp.solutions.hands.Hands(
-        model_complexity=0, max_num_hands=1,
-        min_detection_confidence=0.6, min_tracking_confidence=0.5)
-    draw = mp.solutions.drawing_utils
+    model_path = os.path.join(here, "models", "hand_landmarker.task")
+    if not os.path.isfile(model_path):
+        print(f"[!] Khong tim thay model: {model_path}")
+        print("    Tai tai: https://storage.googleapis.com/mediapipe-models/"
+              "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task")
+        return
+    options = mp_vision.HandLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=model_path),
+        running_mode=mp_vision.RunningMode.VIDEO,
+        num_hands=1,
+        min_hand_detection_confidence=0.6,
+        min_tracking_confidence=0.5)
+    landmarker = mp_vision.HandLandmarker.create_from_options(options)
 
-    xs = deque(maxlen=12)            # lich su (thoi_gian, x) de phat hien quet
+    xs = deque(maxlen=12)            # lich su (thoi_gian, x) de phat hien quet 1 ngon
     last_swipe = 0.0
     mode = "NORMAL"                  # NORMAL | ROTATE
     open_since = None                # moc thoi gian bat dau gio 5 ngon
     fist_since = None                # moc thoi gian bat dau nam tay
     rotate = 0.0
     base_angle = None
+    prev_nf = -1                     # so ngon frame truoc (bat "canh len" cua cu chi)
+    big_num = 0                      # so ngon dang hien to giua man hinh (3/4)
+    big_until = 0.0                  # thoi diem se an so to di
+
+    t_start = time.time()            # moc de tinh timestamp cho detect_for_video
+    last_ts = -1
 
     W, H = args.width, args.height
     win = "Hand Gesture Controller"
@@ -119,36 +157,57 @@ def main():
             break
         frame = cv2.flip(frame, 1)   # guong nhu selfie -> di chuyen tu nhien
         fh, fw = frame.shape[:2]
-        res = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        ts = int((time.time() - t_start) * 1000)   # phai tang dan cho mode VIDEO
+        if ts <= last_ts:
+            ts = last_ts + 1
+        last_ts = ts
+        res = landmarker.detect_for_video(mp_img, ts)
         now = time.time()
         gesture = "-"
 
-        if res.multi_hand_landmarks:
-            lm = res.multi_hand_landmarks[0]
-            pts = [(p.x * fw, p.y * fh) for p in lm.landmark]
+        if res.hand_landmarks:
+            lm = res.hand_landmarks[0]
+            pts = [(p.x * fw, p.y * fh) for p in lm]
             nf = count_fingers(pts)
             gesture = f"{nf} ngon"
-            draw.draw_landmarks(frame, lm, mp.solutions.hands.HAND_CONNECTIONS)
+            draw_hand(frame, pts)
 
             if mode == "NORMAL":
-                px = pts[9][0] / fw            # x long ban tay (chuan hoa 0..1)
-                xs.append((now, px))
-                # phat hien quet: dich chuyen ngang nhanh
-                if now - last_swipe > 0.8 and len(xs) >= 5:
-                    t0, x0 = xs[0]
-                    t1, x1 = xs[-1]
-                    if t1 - t0 < 0.5 and abs(x1 - x0) > 0.28 and images:
-                        if x1 - x0 > 0:
-                            idx = (idx + 1) % len(images)
-                            gesture = "QUET PHAI ->"
-                        else:
-                            idx = (idx - 1) % len(images)
-                            gesture = "<- QUET TRAI"
-                        cur = cv2.imread(images[idx])
-                        rotate = 0.0
-                        last_swipe = now
-                        xs.clear()
-                # gio 5 ngon giu ~0.8s -> vao che do xoay
+                # ---- QUET doi anh bang 1 ngon (theo dau ngon tro, nhay hon) ----
+                if nf == 1:
+                    tipx = pts[8][0] / fw          # x dau ngon tro (chuan hoa 0..1)
+                    xs.append((now, tipx))
+                    if now - last_swipe > 0.5 and len(xs) >= 3:
+                        t0, x0 = xs[0]
+                        t1, x1 = xs[-1]
+                        if t1 - t0 < 0.6 and abs(x1 - x0) > 0.15 and images:
+                            if x1 - x0 > 0:
+                                idx = (idx + 1) % len(images)
+                                gesture = "QUET PHAI ->"
+                            else:
+                                idx = (idx - 1) % len(images)
+                                gesture = "<- QUET TRAI"
+                            cur = cv2.imread(images[idx])
+                            rotate = 0.0
+                            last_swipe = now
+                            xs.clear()
+                else:
+                    xs.clear()
+
+                # ---- 2 ngon: reset anh ve trang thai ban dau (het xoay) ----
+                if nf == 2 and prev_nf != 2:
+                    rotate = 0.0
+                    base_angle = None
+                    gesture = "RESET ANH"
+
+                # ---- 3 / 4 ngon: hien so to giua man hinh roi tu bien mat ----
+                if nf in (3, 4) and prev_nf != nf:
+                    big_num = nf
+                    big_until = now + 1.0
+
+                # ---- gio 5 ngon giu ~0.8s -> vao che do XOAY ----
                 if nf >= 5:
                     open_since = open_since or now
                     if now - open_since > 0.8:
@@ -171,9 +230,11 @@ def main():
                         fist_since = None
                 else:
                     fist_since = None
+            prev_nf = nf
         else:
             xs.clear()
             open_since = fist_since = None
+            prev_nf = -1
 
         # ==== ve canvas hien thi ====
         canvas = np.full((H, W, 3), 25, np.uint8)
@@ -193,6 +254,18 @@ def main():
         canvas[10:160, W - 210:W - 10] = thumb
         cv2.rectangle(canvas, (W - 210, 10), (W - 10, 160), (80, 80, 80), 1)
 
+        # ==== so ngon to giua man hinh (3/4 ngon), mo dan roi bien mat ====
+        if now < big_until:
+            alpha = min(1.0, (big_until - now) / 0.4)   # mo dan trong 0.4s cuoi
+            txt = str(big_num)
+            scale, thick = 12.0, 20
+            (tw, th), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
+            tx, ty = (W - tw) // 2, (H + th) // 2
+            overlay = canvas.copy()
+            cv2.putText(overlay, txt, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX,
+                        scale, (80, 220, 255), thick, cv2.LINE_AA)
+            cv2.addWeighted(overlay, alpha, canvas, 1 - alpha, 0, canvas)
+
         # thanh trang thai
         color = (60, 200, 90) if mode == "NORMAL" else (60, 160, 255)
         cv2.rectangle(canvas, (0, H - 40), (W, H), (15, 15, 15), -1)
@@ -204,7 +277,8 @@ def main():
         cv2.putText(canvas, info, (15, H - 14),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         cv2.putText(canvas,
-                    "Quet trai/phai: doi anh | 5 ngon: xoay | Nam tay: thoat xoay | Q/ESC: thoat",
+                    "1 ngon: quet doi anh | 2 ngon: reset | 3/4 ngon: hien so | "
+                    "5 ngon: xoay | Nam tay: thoat xoay | Q/ESC: thoat",
                     (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
 
         cv2.imshow(win, canvas)
@@ -213,7 +287,7 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
-    hands.close()
+    landmarker.close()
 
 
 if __name__ == "__main__":

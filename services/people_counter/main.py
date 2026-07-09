@@ -17,6 +17,7 @@ Phim tat:
 import argparse
 import json
 import os
+import threading
 import time
 from collections import defaultdict
 
@@ -24,6 +25,28 @@ import cv2
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 STATS_PATH = os.path.join(DATA_DIR, "stats.json")
+
+# Diem phat hien qua vach duoc nhac len 1 chut so voi day khung (theo % chieu cao box).
+FEET_OFFSET = 0.15
+
+try:
+    import winsound  # co san tren Windows
+    _HAS_SOUND = os.name == "nt"
+except ImportError:
+    _HAS_SOUND = False
+
+
+def _beep_seq(tones):
+    for freq, dur in tones:
+        winsound.Beep(freq, dur)
+
+
+def play_event_sound(going_in):
+    """Phat am thanh khac nhau: VAO = 2 not di len, RA = 2 not di xuong."""
+    if not _HAS_SOUND:
+        return
+    tones = [(880, 120), (1320, 150)] if going_in else [(660, 120), (440, 170)]
+    threading.Thread(target=_beep_seq, args=(tones,), daemon=True).start()
 
 
 def load_model(weights, device, imgsz, reexport):
@@ -126,9 +149,23 @@ def main():
             },
         }
         tmp = STATS_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(stats, f, ensure_ascii=False)
-        os.replace(tmp, STATS_PATH)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(stats, f, ensure_ascii=False)
+            # Windows co the bao WinError 5 khi file dang bi tien trinh khac (dashboard,
+            # antivirus) mo doc -> thu lai vai lan, roi ghi truc tiep neu van khong duoc.
+            for attempt in range(5):
+                try:
+                    os.replace(tmp, STATS_PATH)
+                    return
+                except PermissionError:
+                    time.sleep(0.05)
+            with open(STATS_PATH, "w", encoding="utf-8") as f:
+                json.dump(stats, f, ensure_ascii=False)
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError as e:
+            print(f"[!] Khong ghi duoc stats.json (bo qua): {e}")
 
     while True:
         ok, frame = cap.read()
@@ -152,7 +189,8 @@ def main():
             current = len(ids)
             for tid, box in zip(ids, xyxy):
                 x1, y1, x2, y2 = box
-                center = ((x1 + x2) / 2.0, float(y2))  # diem chan (feet)
+                foot_y = y2 - FEET_OFFSET * (y2 - y1)   # nhac len 1 chut so voi day khung
+                center = ((x1 + x2) / 2.0, float(foot_y))
                 if tid not in seen_ids:
                     seen_ids.add(tid)
                 # ve box + id
@@ -176,6 +214,7 @@ def main():
                         else:
                             out_count += 1
                             per_min_out[cur_min] += 1
+                        play_event_sound(going_in)
                 prev_center[tid] = center
 
         # ==== overlay ====
