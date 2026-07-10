@@ -25,6 +25,11 @@ import threading
 import cv2
 import numpy as np
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(HERE, "models", "blaze_face_short_range.tflite")
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -144,8 +149,16 @@ def main():
         print("[!] Khong mo duoc camera")
         return
 
-    face = mp.solutions.face_detection.FaceDetection(
-        model_selection=0, min_detection_confidence=0.5)
+    if not os.path.isfile(MODEL_PATH):
+        print(f"[!] Khong tim thay model: {MODEL_PATH}")
+        print("    Tai tai: https://storage.googleapis.com/mediapipe-models/"
+              "face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite")
+        return
+    options = mp_vision.FaceDetectorOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=MODEL_PATH),
+        running_mode=mp_vision.RunningMode.VIDEO,
+        min_detection_confidence=0.5)
+    face = mp_vision.FaceDetector.create_from_options(options)
 
     font = load_emoji_font(args.size)
     if font is None:
@@ -176,11 +189,13 @@ def main():
             basket_x = w / 2
 
         # ==== dinh vi mat -> vi tri ro ====
-        res = face.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        res = face.detect_for_video(mp_img, frame_i * 33)  # timestamp ms tang dan
         face_found = False
         if res.detections:
-            box = res.detections[0].location_data.relative_bounding_box
-            fx = (box.xmin + box.width / 2) * w
+            box = res.detections[0].bounding_box     # toa do PIXEL (khong phai ti le)
+            fx = box.origin_x + box.width / 2.0
             basket_x = 0.75 * basket_x + 0.25 * fx   # lam muot
             face_found = True
 

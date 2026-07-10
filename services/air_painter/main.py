@@ -24,8 +24,12 @@ import time
 import cv2
 import numpy as np
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+HERE = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(HERE, "data")
+MODEL_PATH = os.path.join(HERE, "models", "hand_landmarker.task")
 
 # (ten, mau BGR). O cuoi la cuc tay (eraser).
 PALETTE = [
@@ -62,9 +66,20 @@ def main():
         print("[!] Khong mo duoc camera")
         return
 
-    hands = mp.solutions.hands.Hands(
-        model_complexity=0, max_num_hands=1,
-        min_detection_confidence=0.6, min_tracking_confidence=0.5)
+    if not os.path.isfile(MODEL_PATH):
+        print(f"[!] Khong tim thay model: {MODEL_PATH}")
+        print("    Tai tai: https://storage.googleapis.com/mediapipe-models/"
+              "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task")
+        return
+    options = mp_vision.HandLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=MODEL_PATH),
+        running_mode=mp_vision.RunningMode.VIDEO,
+        num_hands=1,
+        min_hand_detection_confidence=0.6,
+        min_tracking_confidence=0.5)
+    landmarker = mp_vision.HandLandmarker.create_from_options(options)
+    t_start = time.time()
+    last_ts = -1
 
     canvas = None
     prev = None                # diem ve truoc do
@@ -85,12 +100,18 @@ def main():
         if canvas is None:
             canvas = np.zeros((h, w, 3), np.uint8)
 
-        res = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        ts = int((time.time() - t_start) * 1000)   # phai tang dan cho mode VIDEO
+        if ts <= last_ts:
+            ts = last_ts + 1
+        last_ts = ts
+        res = landmarker.detect_for_video(mp_img, ts)
         mode = "NGHI"
 
-        if res.multi_hand_landmarks:
-            lm = res.multi_hand_landmarks[0]
-            pts = [(p.x * w, p.y * h) for p in lm.landmark]
+        if res.hand_landmarks:
+            lm = res.hand_landmarks[0]
+            pts = [(p.x * w, p.y * h) for p in lm]
             index_up = finger_up(pts, 8, 6)
             middle_up = finger_up(pts, 12, 10)
             ix, iy = int(pts[8][0]), int(pts[8][1])   # dau ngon tro
@@ -164,7 +185,7 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
-    hands.close()
+    landmarker.close()
 
 
 if __name__ == "__main__":

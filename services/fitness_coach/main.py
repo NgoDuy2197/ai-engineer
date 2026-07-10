@@ -23,9 +23,31 @@ import time
 import cv2
 import numpy as np
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
 
-mp_pose = mp.solutions.pose
-mp_draw = mp.solutions.drawing_utils
+HERE = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(HERE, "models", "pose_landmarker_lite.task")
+
+# Ket noi khung xuong Pose 33 diem (thay cho mp_pose.POSE_CONNECTIONS,
+# vi ban mediapipe cho Python 3.13 chi con Tasks API, khong con "solutions").
+POSE_CONNECTIONS = [
+    (0, 1), (1, 2), (2, 3), (3, 7), (0, 4), (4, 5), (5, 6), (6, 8), (9, 10),
+    (11, 12), (11, 13), (13, 15), (15, 17), (15, 19), (15, 21), (17, 19),
+    (12, 14), (14, 16), (16, 18), (16, 20), (16, 22), (18, 20),
+    (11, 23), (12, 24), (23, 24),
+    (23, 25), (25, 27), (27, 29), (29, 31), (27, 31),
+    (24, 26), (26, 28), (28, 30), (30, 32), (28, 32),
+]
+
+
+def draw_pose(frame, lms, w, h):
+    """Ve khung xuong Pose (thay cho mp_draw.draw_landmarks)."""
+    pix = [(int(p.x * w), int(p.y * h)) for p in lms]
+    for a, b in POSE_CONNECTIONS:
+        cv2.line(frame, pix[a], pix[b], (245, 117, 66), 2)
+    for x, y in pix:
+        cv2.circle(frame, (x, y), 4, (245, 66, 230), -1)
 
 # Cau hinh moi bai: (bo 3 diem trai, bo 3 diem phai, goc_sau, goc_thang, ten)
 # Landmark Pose: vai 11/12, khuyu 13/14, co tay 15/16, hong 23/24, goi 25/26, co chan 27/28
@@ -73,8 +95,20 @@ def main():
         print("[!] Khong mo duoc camera")
         return
 
-    pose = mp_pose.Pose(model_complexity=1, min_detection_confidence=0.5,
-                        min_tracking_confidence=0.5)
+    if not os.path.isfile(MODEL_PATH):
+        print(f"[!] Khong tim thay model: {MODEL_PATH}")
+        print("    Tai tai: https://storage.googleapis.com/mediapipe-models/"
+              "pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task")
+        return
+    options = mp_vision.PoseLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=MODEL_PATH),
+        running_mode=mp_vision.RunningMode.VIDEO,
+        num_poses=1,
+        min_pose_detection_confidence=0.5,
+        min_tracking_confidence=0.5)
+    pose = mp_vision.PoseLandmarker.create_from_options(options)
+    t_start = time.time()
+    last_ts = -1
 
     ex = args.exercise
     count = 0
@@ -88,14 +122,20 @@ def main():
             break
         frame = cv2.flip(frame, 1)
         h, w = frame.shape[:2]
-        res = pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        ts = int((time.time() - t_start) * 1000)   # phai tang dan cho mode VIDEO
+        if ts <= last_ts:
+            ts = last_ts + 1
+        last_ts = ts
+        res = pose.detect_for_video(mp_img, ts)
         cfg = EXERCISES[ex]
         ang = None
 
         if res.pose_landmarks:
-            mp_draw.draw_landmarks(frame, res.pose_landmarks,
-                                   mp_pose.POSE_CONNECTIONS)
-            ang, joint = pick_side(res.pose_landmarks.landmark, cfg, w, h)
+            lms = res.pose_landmarks[0]
+            draw_pose(frame, lms, w, h)
+            ang, joint = pick_side(lms, cfg, w, h)
 
             # may bay trang thai dem rep
             if ang > cfg["straight"]:
