@@ -33,3 +33,7 @@ services/hand_gesture_controller/images/*
 # ===== Du lieu thong ke People Counter (giu thu muc, bo file) =====
 services/people_counter/data/*
 !services/people_counter/data/.gitkeep
+
+# ===== Anh canh bao / log Security Cam (giu thu muc, bo file) =====
+services/security_cam/data/*
+!services/security_cam/data/.gitkeep
