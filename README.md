@@ -25,7 +25,10 @@ ai-engineer/
    ├─ air_painter/            # Vẽ trong không khí bằng ngón tay (MediaPipe Hands)
    ├─ fitness_coach/          # Đếm squat / gập tay qua góc khớp (MediaPipe Pose)
    ├─ security_cam/           # Camera an ninh: có người thì báo động + chụp ảnh + log
-   └─ fruit_catch/            # Game hứng hoa quả bằng khuôn mặt + pháo hoa
+   ├─ fruit_catch/            # Game hứng hoa quả bằng khuôn mặt + pháo hoa
+   ├─ ninja_slash/            # Game chém hoa quả bay bằng đầu ngón tay (né bom)
+   ├─ space_dodge/            # Game lái phi thuyền né thiên thạch bằng khuôn mặt
+   └─ pose_echo/              # Vẽ "người que" trễ ~3s lặp lại động tác của bạn
 ```
 
 ## Yêu cầu

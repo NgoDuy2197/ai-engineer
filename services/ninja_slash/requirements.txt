@@ -1,0 +1,4 @@
+# Ninja Slash - chem hoa qua bang ngon tay (MediaPipe Hands, CPU)
+mediapipe>=0.10.9
+opencv-python>=4.8.0
+numpy>=2.1.0,<2.5.0

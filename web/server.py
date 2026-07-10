@@ -28,6 +28,9 @@ SERVICES = {
     "fitness_coach": "start_fitness_coach.bat",
     "security_cam": "start_security_cam.bat",
     "fruit_catch": "start_fruit_catch.bat",
+    "ninja_slash": "start_ninja_slash.bat",
+    "space_dodge": "start_space_dodge.bat",
+    "pose_echo": "start_pose_echo.bat",
 }
 
 DEFAULT_STATS = {
