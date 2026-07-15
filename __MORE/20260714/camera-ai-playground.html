@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera AI Playground — 5 tương tác</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3;
+    --muted:#8b949e; --accent:#58a6ff; --accent2:#3fb950; --danger:#f85149;
+    --warn:#d29922;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:linear-gradient(160deg,#0d1117,#0a0e14);
+    color:var(--text);min-height:100vh;padding:16px;
+  }
+  header{max-width:1000px;margin:0 auto 14px;text-align:center}
+  header h1{font-size:1.6rem;font-weight:700;letter-spacing:-.5px}
+  header p{color:var(--muted);font-size:.9rem;margin-top:4px}
+  .tabs{
+    max-width:1000px;margin:0 auto 14px;display:flex;flex-wrap:wrap;gap:8px;
+    justify-content:center;
+  }
+  .tab{
+    background:var(--panel);border:1px solid var(--border);color:var(--text);
+    padding:9px 14px;border-radius:10px;cursor:pointer;font-size:.85rem;
+    transition:.15s;display:flex;align-items:center;gap:6px;
+  }
+  .tab:hover{border-color:var(--accent)}
+  .tab.active{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:600}
+  .stage{
+    max-width:1000px;margin:0 auto;background:var(--panel);
+    border:1px solid var(--border);border-radius:16px;padding:16px;
+  }
+  .stage-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .stage-head h2{font-size:1.15rem}
+  .stage-head .desc{color:var(--muted);font-size:.82rem;margin-top:3px;max-width:560px}
+  .viewport{
+    position:relative;width:100%;aspect-ratio:4/3;background:#000;
+    border-radius:12px;overflow:hidden;border:1px solid var(--border);
+  }
+  .viewport video, .viewport canvas{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    transform:scaleX(-1); /* gương */
+  }
+  .viewport video{opacity:0} /* video ẩn, chỉ dùng canvas vẽ */
+  #overlay{z-index:2}
+  .hud{
+    position:absolute;top:10px;left:10px;z-index:3;background:rgba(0,0,0,.55);
+    padding:8px 12px;border-radius:8px;font-size:.8rem;backdrop-filter:blur(4px);
+    line-height:1.5;transform:none;
+  }
+  .hud b{color:var(--accent2)}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+  button.btn{
+    background:var(--accent);color:#04121f;border:none;padding:9px 16px;
+    border-radius:9px;font-weight:600;cursor:pointer;font-size:.85rem;
+  }
+  button.btn.secondary{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+  button.btn.danger{background:var(--danger);color:#fff}
+  button.btn:disabled{opacity:.4;cursor:not-allowed}
+  .slider{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted)}
+  input[type=range]{accent-color:var(--accent)}
+  .status{font-size:.8rem;color:var(--muted);margin-top:10px;min-height:1.2em}
+  .note{
+    max-width:1000px;margin:14px auto 0;background:var(--panel);
+    border:1px solid var(--border);border-left:3px solid var(--warn);
+    border-radius:10px;padding:12px 14px;font-size:.8rem;color:var(--muted);line-height:1.55;
+  }
+  .note b{color:var(--text)}
+  .swatch{width:26px;height:26px;border-radius:6px;border:2px solid #fff;display:inline-block;vertical-align:middle}
+  .pill{background:#04121f33;border:1px solid var(--border);padding:2px 8px;border-radius:20px;font-size:.75rem}
+  @media(max-width:600px){.stage-head h2{font-size:1rem}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎥 Camera AI Playground</h1>
+  <p>5 tương tác dùng camera + thị giác máy tính, chạy 100% trong trình duyệt</p>
+</header>
+
+<nav class="tabs" id="tabs"></nav>
+
+<main class="stage">
+  <div class="stage-head">
+    <div>
+      <h2 id="modeTitle"></h2>
+      <div class="desc" id="modeDesc"></div>
+    </div>
+    <span class="pill" id="fpsPill">-- FPS</span>
+  </div>
+
+  <div class="viewport">
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div class="hud" id="hud"></div>
+  </div>
+
+  <div class="controls" id="controls">
+    <button class="btn" id="startBtn">▶ Bật camera</button>
+    <button class="btn secondary" id="stopBtn" disabled>■ Tắt</button>
+    <div class="slider">
+      Độ nhạy
+      <input type="range" id="sens" min="8" max="60" value="25">
+    </div>
+    <button class="btn secondary" id="clearBtn">🧹 Xoá</button>
+  </div>
+  <div class="status" id="status">Nhấn "Bật camera" và cho phép quyền truy cập.</div>
+</main>
+
+<div class="note">
+  <b>Về mặt kỹ thuật:</b> Các trò này dùng <b>thị giác máy tính cổ điển</b> chạy trong trình duyệt —
+  <i>frame differencing</i> (so sánh khung hình liên tiếp để bắt chuyển động) và <i>color tracking</i> (bám theo màu).
+  Đây <b>không phải mô hình học sâu</b>. Nếu muốn nhận diện bàn tay/khuôn mặt/tư thế thật sự bằng AI,
+  có thể nâng cấp bằng thư viện <b>MediaPipe Tasks</b> hoặc <b>TensorFlow.js</b> (cần tải model qua mạng) —
+  tôi có thể bổ sung nếu bạn cần. Camera chỉ xử lý cục bộ, không gửi đi đâu.
+</div>
+
+<script>
+/* ============================================================
+   KHUNG CHUNG: camera, vòng lặp render, quản lý mode
+   ============================================================ */
+const video   = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const octx    = overlay.getContext('2d', { willReadFrequently:true });
+const hud     = document.getElementById('hud');
+const statusEl= document.getElementById('status');
+const fpsPill = document.getElementById('fpsPill');
+const sensEl  = document.getElementById('sens');
+
+// canvas ẩn để đọc pixel ở độ phân giải thấp (nhanh)
+const W = 160, H = 120;              // độ phân giải xử lý
+const work = document.createElement('canvas'); work.width=W; work.height=H;
+const wctx = work.getContext('2d', { willReadFrequently:true });
+
+let stream=null, running=false, prevGray=null, rafId=null;
+let lastT=performance.now(), frames=0;
+
+const MODES = {}; // đăng ký mode
+let current = null;
+
+function setStatus(t){ statusEl.textContent = t; }
+
+async function startCamera(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ width:640, height:480, facingMode:'user' }, audio:false });
+    video.srcObject = stream;
+    await video.play();
+    running = true;
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('stopBtn').disabled = false;
+    setStatus('Đang chạy — mode: ' + current.title);
+    prevGray = null;
+    if(current.reset) current.reset();
+    loop();
+  }catch(e){
+    setStatus('❌ Không mở được camera: ' + e.message);
+  }
+}
+function stopCamera(){
+  running=false;
+  if(rafId) cancelAnimationFrame(rafId);
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  document.getElementById('startBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  setStatus('Đã tắt camera.');
+}
+
+function fitCanvas(){
+  const r = overlay.getBoundingClientRect();
+  overlay.width = r.width; overlay.height = r.height;
+}
+window.addEventListener('resize', fitCanvas);
+
+// grayscale + diff tiện ích, trả về ImageData nhỏ
+function grabFrame(){
+  wctx.drawImage(video, 0, 0, W, H);
+  return wctx.getImageData(0,0,W,H);
+}
+function toGray(img){
+  const g = new Uint8ClampedArray(W*H);
+  const d = img.data;
+  for(let i=0,j=0;i<d.length;i+=4,j++){
+    g[j] = (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114)|0;
+  }
+  return g;
+}
+
+function loop(){
+  if(!running) return;
+  rafId = requestAnimationFrame(loop);
+  if(video.readyState < 2) return;
+
+  const img = grabFrame();
+  current.frame(img);
+
+  // FPS
+  frames++;
+  const now = performance.now();
+  if(now-lastT > 500){
+    fpsPill.textContent = Math.round(frames*1000/(now-lastT)) + ' FPS';
+    frames=0; lastT=now;
+  }
+}
+
+/* Ánh xạ toạ độ từ lưới xử lý (W×H, đã lật gương) sang canvas overlay.
+   Vì overlay bị scaleX(-1) qua CSS, ta vẽ theo hệ toạ độ gốc video;
+   CSS sẽ lo phần lật để khớp với hình người dùng thấy. */
+function sx(x){ return x / W * overlay.width; }
+function sy(y){ return y / H * overlay.height; }
+
+/* ============================================================
+   MODE 1 — Máy dò chuyển động / Camera an ninh
+   ============================================================ */
+MODES.motion = {
+  title:'🛡️ Camera an ninh — dò chuyển động',
+  desc:'Tô đỏ vùng có chuyển động (frame differencing). Báo động khi mức chuyển động vượt ngưỡng — như camera giám sát.',
+  alarm:0,
+  reset(){ this.alarm=0; },
+  frame(img){
+    const gray = toGray(img);
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    if(!prevGray){ prevGray=gray; return; }
+    const thr = +sensEl.value;
+    let moved=0;
+    // vẽ overlay chuyển động
+    const cell = overlay.width / W;
+    const cellH = overlay.height / H;
+    octx.fillStyle='rgba(248,81,73,0.55)';
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        const i=y*W+x;
+        if(Math.abs(gray[i]-prevGray[i])>thr){
+          moved++;
+          octx.fillRect(x*cell, y*cellH, cell+1, cellH+1);
+        }
+      }
+    }
+    prevGray=gray;
+    const pct = (moved/(W*H)*100);
+    const alarming = pct > 4;
+    this.alarm = alarming ? Math.min(this.alarm+1,30) : Math.max(this.alarm-2,0);
+    if(this.alarm>6){
+      octx.strokeStyle='#f85149'; octx.lineWidth=8;
+      octx.strokeRect(0,0,overlay.width,overlay.height);
+    }
+    hud.innerHTML = `Chuyển động: <b>${pct.toFixed(1)}%</b><br>`+
+                    (this.alarm>6 ? '🚨 <span style="color:#f85149">CÓ CHUYỂN ĐỘNG!</span>' : '✅ Yên tĩnh');
+  }
+};
+
+/* ============================================================
+   MODE 2 — Motion Ninja (chém trái cây bằng tay)
+   ============================================================ */
+MODES.ninja = {
+  title:'🥷 Motion Ninja — chém bằng chuyển động',
+  desc:'Vẫy tay để chém trái cây bay lên. Chuyển động nhanh tại vị trí trái cây = chém trúng. Tránh chém bom 💣.',
+  fruits:[], score:0, lives:5, spawnT:0, trail:[],
+  reset(){ this.fruits=[]; this.score=0; this.lives=5; this.spawnT=0; this.trail=[]; },
+  frame(img){
+    const gray=toGray(img);
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    // bản đồ chuyển động + trọng tâm
+    let cx=0,cy=0,cnt=0;
+    const thr=+sensEl.value;
+    const motionGrid = new Uint8Array(W*H);
+    if(prevGray){
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+        const i=y*W+x;
+        if(Math.abs(gray[i]-prevGray[i])>thr){ motionGrid[i]=1; cx+=x;cy+=y;cnt++; }
+      }
+    }
+    prevGray=gray;
+
+    // vẽ vệt tay (trọng tâm chuyển động)
+    if(cnt>40){
+      const mx=cx/cnt, my=cy/cnt;
+      this.trail.push({x:mx,y:my});
+      if(this.trail.length>10) this.trail.shift();
+    } else if(this.trail.length){ this.trail.shift(); }
+    octx.lineCap='round';
+    for(let i=1;i<this.trail.length;i++){
+      const a=this.trail[i-1],b=this.trail[i];
+      octx.strokeStyle=`rgba(88,166,255,${i/this.trail.length})`;
+      octx.lineWidth=i+2;
+      octx.beginPath(); octx.moveTo(sx(a.x),sy(a.y)); octx.lineTo(sx(b.x),sy(b.y)); octx.stroke();
+    }
+
+    // spawn
+    this.spawnT++;
+    if(this.spawnT>45){
+      this.spawnT=0;
+      const bomb = Math.random()<0.22;
+      this.fruits.push({
+        x: 20+Math.random()*(W-40), y:H+10,
+        vx:(Math.random()-0.5)*1.2, vy:-(3.4+Math.random()*1.4),
+        r: 9+Math.random()*4, bomb, sliced:false,
+        emoji: bomb?'💣':['🍉','🍎','🍊','🍋','🍇','🥝'][Math.random()*6|0]
+      });
+    }
+    // update + kiểm tra chém
+    for(const f of this.fruits){
+      f.vy+=0.055; f.x+=f.vx; f.y+=f.vy;
+      if(!f.sliced){
+        const gx=f.x|0, gy=f.y|0;
+        let hit=false;
+        for(let dy=-3;dy<=3&&!hit;dy++)for(let dx=-3;dx<=3;dx++){
+          const nx=gx+dx, ny=gy+dy;
+          if(nx>=0&&nx<W&&ny>=0&&ny<H&&motionGrid[ny*W+nx]){ hit=true; break; }
+        }
+        if(hit && cnt>40){
+          f.sliced=true;
+          if(f.bomb){ this.lives--; }
+          else this.score++;
+        }
+      }
+      // vẽ
+      octx.font = (f.r*2)+'px serif';
+      octx.textAlign='center'; octx.textBaseline='middle';
+      octx.save();
+      // bù lật gương cho emoji khỏi bị ngược
+      octx.translate(sx(f.x),sy(f.y)); octx.scale(-1,1);
+      octx.globalAlpha = f.sliced?0.35:1;
+      octx.fillText(f.emoji,0,0);
+      octx.restore();
+    }
+    this.fruits = this.fruits.filter(f=> f.y<H+30 && !(f.sliced&&f.y>0&&Math.random()<0.05));
+    // trái cây rơi khỏi màn (không phải bom) -> mất mạng nếu chưa chém
+    this.fruits.forEach(f=>{ if(f.y>H+20 && !f.sliced && !f.bomb){ f._miss=true; } });
+    const missed=this.fruits.filter(f=>f._miss).length;
+    if(missed){ this.lives-=missed; }
+    this.fruits=this.fruits.filter(f=>!f._miss);
+
+    if(this.lives<=0){ this.reset(); }
+    hud.innerHTML=`Điểm: <b>${this.score}</b> &nbsp; ❤️ ${Math.max(this.lives,0)}<br><span style="color:var(--muted)">Vẫy tay để chém!</span>`;
+  }
+};
+
+/* ============================================================
+   MODE 3 — Air Paint (vẽ trong không khí)
+   ============================================================ */
+MODES.paint = {
+  title:'🎨 Air Paint — vẽ bằng chuyển động',
+  desc:'Di chuyển tay (hoặc vật) để vẽ. Điểm chuyển động mạnh nhất trở thành đầu bút. Đổi màu tự động theo thời gian.',
+  strokes:null, last:null, hue:200,
+  reset(){ this.last=null; },
+  frame(img){
+    const gray=toGray(img);
+    const thr=+sensEl.value;
+    let cx=0,cy=0,cnt=0;
+    if(prevGray){
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+        const i=y*W+x;
+        if(Math.abs(gray[i]-prevGray[i])>thr){ cx+=x;cy+=y;cnt++; }
+      }
+    }
+    prevGray=gray;
+    this.hue=(this.hue+0.7)%360;
+    if(cnt>50){
+      const mx=cx/cnt,my=cy/cnt;
+      const p={x:sx(mx),y:sy(my)};
+      if(this.last){
+        octx.strokeStyle=`hsl(${this.hue},90%,60%)`;
+        octx.lineWidth=6; octx.lineCap='round';
+        octx.beginPath(); octx.moveTo(this.last.x,this.last.y); octx.lineTo(p.x,p.y); octx.stroke();
+      }
+      this.last=p;
+      // con trỏ
+      octx.fillStyle=`hsl(${this.hue},90%,60%)`;
+      octx.beginPath(); octx.arc(p.x,p.y,7,0,7); octx.fill();
+    } else { this.last=null; }
+    hud.innerHTML=`🖌️ Vẽ bằng tay<br><span style="color:var(--muted)">Nút 🧹 để xoá tranh</span>`;
+  }
+};
+
+/* ============================================================
+   MODE 4 — Color Tracker (bám theo màu, con trỏ ảo)
+   ============================================================ */
+MODES.color = {
+  title:'🔴 Color Tracker — bám theo vật màu',
+  desc:'Bấm vào hình để chọn màu vật cần bám (VD: nắp chai đỏ). Hệ thống sẽ bám theo và hiện con trỏ. Click vào 3 mục tiêu để ghi điểm.',
+  target:null, targets:[], score:0, sampleMode:true,
+  reset(){ this.target=null; this.score=0; this.spawn(); this.sampleMode=true; },
+  spawn(){
+    this.targets=[]; for(let i=0;i<3;i++)
+      this.targets.push({x:20+Math.random()*(W-40),y:20+Math.random()*(H-40),r:10,hit:false});
+  },
+  frame(img){
+    const d=img.data;
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    if(!this.target){
+      hud.innerHTML='👆 Bấm vào một vật có màu nổi bật trên hình để chọn.';
+      return;
+    }
+    // tìm pixel gần màu mục tiêu nhất -> trọng tâm
+    let cx=0,cy=0,cnt=0; const t=this.target, tol=55;
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const i=(y*W+x)*4;
+      const dr=d[i]-t.r, dg=d[i+1]-t.g, db=d[i+2]-t.b;
+      if(dr*dr+dg*dg+db*db < tol*tol){ cx+=x;cy+=y;cnt++; }
+    }
+    // vẽ mục tiêu
+    this.targets.forEach(tg=>{
+      if(tg.hit) return;
+      octx.beginPath(); octx.arc(sx(tg.x),sy(tg.y),18,0,7);
+      octx.fillStyle='rgba(63,185,80,.85)'; octx.fill();
+      octx.fillStyle='#fff'; octx.font='16px serif'; octx.textAlign='center'; octx.textBaseline='middle';
+      octx.save(); octx.translate(sx(tg.x),sy(tg.y)); octx.scale(-1,1); octx.fillText('🎯',0,0); octx.restore();
+    });
+    if(cnt>15){
+      const mx=cx/cnt,my=cy/cnt;
+      octx.strokeStyle=`rgb(${t.r},${t.g},${t.b})`; octx.lineWidth=4;
+      octx.beginPath(); octx.arc(sx(mx),sy(my),16,0,7); octx.stroke();
+      octx.beginPath(); octx.moveTo(sx(mx)-22,sy(my)); octx.lineTo(sx(mx)+22,sy(my));
+      octx.moveTo(sx(mx),sy(my)-22); octx.lineTo(sx(mx),sy(my)+22); octx.stroke();
+      // chạm mục tiêu
+      this.targets.forEach(tg=>{
+        if(!tg.hit && Math.hypot(tg.x-mx,tg.y-my)<8){ tg.hit=true; this.score++; }
+      });
+      if(this.targets.every(t=>t.hit)) this.spawn();
+    }
+    hud.innerHTML=`Màu bám: <span class="swatch" style="background:rgb(${t.r},${t.g},${t.b})"></span> `+
+                  `&nbsp; điểm mục tiêu: <b>${this.score}</b>`;
+  }
+};
+
+/* ============================================================
+   MODE 5 — Dodge / Hứng đồ vật (điều khiển bằng thân người)
+   ============================================================ */
+MODES.dodge = {
+  title:'🧺 Hứng đồ — điều khiển bằng người',
+  desc:'Nghiêng/di chuyển người sang trái–phải để điều khiển cái giỏ hứng đồ rơi. Vị trí ngang của chuyển động = vị trí giỏ.',
+  items:[], score:0, basketX:0.5, spawnT:0, missed:0,
+  reset(){ this.items=[]; this.score=0; this.basketX=0.5; this.spawnT=0; this.missed=0; },
+  frame(img){
+    const gray=toGray(img);
+    const thr=+sensEl.value;
+    let cx=0,cnt=0;
+    if(prevGray){
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+        const i=y*W+x;
+        if(Math.abs(gray[i]-prevGray[i])>thr){ cx+=x;cnt++; }
+      }
+    }
+    prevGray=gray;
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    if(cnt>60){
+      const target=cx/cnt/W;               // 0..1
+      this.basketX += (target-this.basketX)*0.25; // mượt
+    }
+    // spawn đồ vật
+    this.spawnT++;
+    if(this.spawnT>40){ this.spawnT=0;
+      this.items.push({x:Math.random(),y:0,v:0.006+Math.random()*0.006,
+        e:['⭐','🍒','💎','🎁','🍬'][Math.random()*5|0]});
+    }
+    const bx=this.basketX*overlay.width, by=overlay.height-34;
+    // giỏ
+    octx.save(); octx.translate(bx,by); octx.scale(-1,1);
+    octx.font='40px serif'; octx.textAlign='center'; octx.textBaseline='middle';
+    octx.fillText('🧺',0,0); octx.restore();
+    // đồ vật
+    for(const it of this.items){
+      it.y+=it.v;
+      const ix=it.x*overlay.width, iy=it.y*overlay.height;
+      octx.save(); octx.translate(ix,iy); octx.scale(-1,1);
+      octx.font='26px serif'; octx.fillText(it.e,0,0); octx.restore();
+      if(it.y>0.9 && Math.abs(it.x*overlay.width-bx)<40){ it.caught=true; this.score++; }
+      else if(it.y>1){ it.gone=true; this.missed++; }
+    }
+    this.items=this.items.filter(it=>!it.caught&&!it.gone);
+    hud.innerHTML=`Hứng được: <b>${this.score}</b> &nbsp; rơi mất: ${this.missed}<br>`+
+                  `<span style="color:var(--muted)">Di chuyển người sang trái/phải</span>`;
+  }
+};
+
+/* ============================================================
+   THIẾT LẬP TABS
+   ============================================================ */
+const ORDER=[
+  ['motion','🛡️ An ninh'],
+  ['ninja','🥷 Ninja'],
+  ['paint','🎨 Vẽ'],
+  ['color','🔴 Bám màu'],
+  ['dodge','🧺 Hứng đồ'],
+];
+const tabsEl=document.getElementById('tabs');
+ORDER.forEach(([key,label])=>{
+  const b=document.createElement('button');
+  b.className='tab'; b.textContent=label; b.dataset.key=key;
+  b.onclick=()=>selectMode(key);
+  tabsEl.appendChild(b);
+});
+
+function selectMode(key){
+  current=MODES[key];
+  document.getElementById('modeTitle').textContent=current.title;
+  document.getElementById('modeDesc').textContent=current.desc;
+  [...tabsEl.children].forEach(t=>t.classList.toggle('active',t.dataset.key===key));
+  prevGray=null;
+  if(current.reset) current.reset();
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  hud.innerHTML='';
+  if(running) setStatus('Đang chạy — mode: '+current.title);
+}
+
+// chọn màu cho Color Tracker khi bấm vào khung hình
+overlay.addEventListener('click', (e)=>{
+  if(current!==MODES.color || !running) return;
+  const rect=overlay.getBoundingClientRect();
+  // toạ độ trên canvas (canvas bị lật gương -> phải lật lại x)
+  let x=(e.clientX-rect.left)/rect.width;
+  x=1-x; // bù gương
+  const y=(e.clientY-rect.top)/rect.height;
+  const px=Math.min(W-1,Math.max(0,x*W|0));
+  const py=Math.min(H-1,Math.max(0,y*H|0));
+  const d=grabFrame().data; const i=(py*W+px)*4;
+  MODES.color.target={r:d[i],g:d[i+1],b:d[i+2]};
+  setStatus(`Đã chọn màu rgb(${d[i]},${d[i+1]},${d[i+2]}) để bám theo.`);
+});
+
+document.getElementById('startBtn').onclick=startCamera;
+document.getElementById('stopBtn').onclick=stopCamera;
+document.getElementById('clearBtn').onclick=()=>{
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  if(current.reset) current.reset();
+};
+
+// init
+fitCanvas();
+selectMode('motion');
+setStatus('Nhấn "Bật camera" và cho phép quyền truy cập. (Cần mở qua http/https hoặc localhost)');
+</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera AI — Trang chủ</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--a1:#58a6ff;--a2:#a371f7}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,"Segoe UI",Roboto,sans-serif;background:linear-gradient(160deg,#0d1117,#0a0e14);
+    color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:26px}
+  h1{font-size:2rem;text-align:center}
+  p.sub{color:var(--muted);text-align:center;max-width:560px}
+  .cards{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;max-width:820px}
+  a.card{text-decoration:none;color:var(--text);background:var(--panel);border:1px solid var(--border);
+    border-radius:16px;padding:22px;width:380px;transition:.15s;display:block}
+  a.card:hover{transform:translateY(-3px)}
+  a.card.p1:hover{border-color:var(--a1)}
+  a.card.p2:hover{border-color:var(--a2)}
+  .card h2{font-size:1.2rem;margin-bottom:6px}
+  .card .tag{font-size:.72rem;padding:3px 9px;border-radius:20px;display:inline-block;margin-bottom:10px}
+  .p1 .tag{background:#1f6feb33;color:var(--a1);border:1px solid var(--a1)}
+  .p2 .tag{background:#a371f733;color:var(--a2);border:1px solid var(--a2)}
+  .card ul{margin:10px 0 0 18px;color:var(--muted);font-size:.85rem;line-height:1.7}
+  footer{color:var(--muted);font-size:.78rem;text-align:center}
+</style>
+</head>
+<body>
+  <h1>🎥 Camera AI Playground</h1>
+  <p class="sub">Bộ tương tác dùng camera + AI/thị giác máy tính, chạy ngay trong trình duyệt. Chọn một bộ để bắt đầu.</p>
+  <div class="cards">
+    <a class="card p1" href="camera-ai-playground.html">
+      <span class="tag">OFFLINE • Không cần mạng</span>
+      <h2>🟦 Thị giác máy tính cổ điển</h2>
+      <ul>
+        <li>🛡️ Camera an ninh dò chuyển động</li>
+        <li>🥷 Motion Ninja — chém bằng tay</li>
+        <li>🎨 Air Paint — vẽ trong không khí</li>
+        <li>🔴 Color Tracker — bám theo màu</li>
+        <li>🧺 Hứng đồ điều khiển bằng người</li>
+      </ul>
+    </a>
+    <a class="card p2" href="camera-ai-mediapipe.html">
+      <span class="tag">AI HỌC SÂU • Cần mạng lần đầu</span>
+      <h2>🟪 MediaPipe (Google AI)</h2>
+      <ul>
+        <li>✋ Nhận diện bàn tay + Pinch Draw</li>
+        <li>✌️ Cử chỉ + Oẳn tù tì</li>
+        <li>😎 Khuôn mặt: filter + đếm chớp mắt</li>
+        <li>🏋️ Khung xương: đếm động tác</li>
+        <li>🖱️ Chuột ảo &nbsp; • &nbsp; 🎹 Piano bằng ngón tay</li>
+      </ul>
+    </a>
+  </div>
+  <footer>Camera chỉ xử lý cục bộ trên máy bạn — không gửi hình ảnh lên server nào.</footer>
+</body>
+</html>

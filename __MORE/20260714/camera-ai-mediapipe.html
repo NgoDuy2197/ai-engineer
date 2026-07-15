@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera AI (MediaPipe) — Nhận diện tay / mặt / khung xương</title>
+<style>
+  :root{
+    --bg:#0d1117;--panel:#161b22;--border:#30363d;--text:#e6edf3;
+    --muted:#8b949e;--accent:#a371f7;--accent2:#3fb950;--danger:#f85149;--warn:#d29922;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:linear-gradient(160deg,#0d1117,#0a0e14);color:var(--text);min-height:100vh;padding:16px}
+  header{max-width:1000px;margin:0 auto 14px;text-align:center}
+  header h1{font-size:1.55rem;font-weight:700;letter-spacing:-.5px}
+  header p{color:var(--muted);font-size:.9rem;margin-top:4px}
+  .tabs{max-width:1000px;margin:0 auto 14px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .tab{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:9px 14px;
+    border-radius:10px;cursor:pointer;font-size:.85rem;transition:.15s}
+  .tab:hover{border-color:var(--accent)}
+  .tab.active{background:var(--accent);color:#0a0212;border-color:var(--accent);font-weight:600}
+  .stage{max-width:1000px;margin:0 auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px}
+  .stage-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .stage-head h2{font-size:1.15rem}
+  .stage-head .desc{color:var(--muted);font-size:.82rem;margin-top:3px;max-width:560px}
+  .viewport{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:12px;overflow:hidden;border:1px solid var(--border)}
+  .viewport video,.viewport canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #overlay{z-index:2}
+  .hud{position:absolute;top:10px;left:10px;z-index:3;background:rgba(0,0,0,.6);padding:8px 12px;
+    border-radius:8px;font-size:.82rem;backdrop-filter:blur(4px);line-height:1.5;max-width:60%}
+  .hud b{color:var(--accent2)}
+  .big{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:3;background:rgba(0,0,0,.6);
+    padding:6px 18px;border-radius:30px;font-size:1.4rem;font-weight:700;backdrop-filter:blur(4px)}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+  button.btn{background:var(--accent);color:#0a0212;border:none;padding:9px 16px;border-radius:9px;font-weight:600;cursor:pointer;font-size:.85rem}
+  button.btn.secondary{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+  button.btn:disabled{opacity:.4;cursor:not-allowed}
+  .status{font-size:.8rem;color:var(--muted);margin-top:10px;min-height:1.2em}
+  .status.err{color:var(--danger)}
+  .loader{position:absolute;inset:0;z-index:4;display:none;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.7);flex-direction:column;gap:10px;font-size:.9rem}
+  .loader.show{display:flex}
+  .spin{width:34px;height:34px;border:3px solid #ffffff33;border-top-color:var(--accent);border-radius:50%;animation:s 1s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .note{max-width:1000px;margin:14px auto 0;background:var(--panel);border:1px solid var(--border);
+    border-left:3px solid var(--accent);border-radius:10px;padding:12px 14px;font-size:.8rem;color:var(--muted);line-height:1.55}
+  .note b{color:var(--text)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🤖 Camera AI — MediaPipe</h1>
+  <p>Nhận diện bàn tay, cử chỉ, khuôn mặt & khung xương bằng mô hình học sâu (chạy trong trình duyệt)</p>
+</header>
+
+<nav class="tabs" id="tabs"></nav>
+
+<main class="stage">
+  <div class="stage-head">
+    <div><h2 id="modeTitle"></h2><div class="desc" id="modeDesc"></div></div>
+    <span class="hud" style="position:static;background:none;padding:0" id="fpsPill">-- FPS</span>
+  </div>
+  <div class="viewport">
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div class="hud" id="hud"></div>
+    <div class="big" id="big" style="display:none"></div>
+    <div class="loader" id="loader"><div class="spin"></div><div id="loadTxt">Đang tải mô hình AI…</div></div>
+  </div>
+  <div class="controls">
+    <button class="btn" id="startBtn">▶ Bật camera</button>
+    <button class="btn secondary" id="stopBtn" disabled>■ Tắt</button>
+    <button class="btn secondary" id="actionBtn" style="display:none"></button>
+    <button class="btn secondary" id="clearBtn">🧹 Xoá / Reset</button>
+  </div>
+  <div class="status" id="status">Nhấn "Bật camera". Lần đầu mỗi trò sẽ tải model (~2–10 MB) — cần có mạng.</div>
+</main>
+
+<div class="note">
+  <b>Đây là AI thật:</b> dùng <b>MediaPipe Tasks Vision</b> của Google (mô hình học sâu) tải qua CDN.
+  Lần đầu vào mỗi trò sẽ tải file model, sau đó chạy real-time bằng WebGL trên máy bạn —
+  <b>hình ảnh không gửi lên server</b>. Cần <b>kết nối mạng</b> để tải model lần đầu và phải mở qua
+  <b>https</b> hoặc <b>localhost</b> (không chạy được với <code>file://</code>).
+</div>
+
+<script type="module">
+import {
+  FilesetResolver, HandLandmarker, GestureRecognizer, FaceLandmarker, PoseLandmarker, DrawingUtils
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21";
+
+const V = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21";
+const M = {
+  hand: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+  gesture: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+  face: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+  pose: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+};
+
+const video=document.getElementById('video'), overlay=document.getElementById('overlay');
+const ctx=overlay.getContext('2d');
+const hud=document.getElementById('hud'), big=document.getElementById('big');
+const statusEl=document.getElementById('status'), fpsPill=document.getElementById('fpsPill');
+const loader=document.getElementById('loader'), loadTxt=document.getElementById('loadTxt');
+const actionBtn=document.getElementById('actionBtn');
+const draw = ()=> new DrawingUtils(ctx);
+
+let vision=null, stream=null, running=false, rafId=null, current=null;
+let lastT=performance.now(), frames=0, lastVideoT=-1;
+const tasks={}; // cache
+
+// Web Audio cho piano / hiệu ứng
+let audioCtx=null;
+function initAudio(){
+  if(!audioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(AC) audioCtx=new AC(); }
+  if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+}
+function playNote(freq,dur=0.6,type='triangle',vol=0.3){
+  initAudio(); if(!audioCtx) return;
+  const t=audioCtx.currentTime, o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol,t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t+dur+0.05);
+}
+
+function setStatus(t,err){ statusEl.textContent=t; statusEl.classList.toggle('err',!!err); }
+function fitCanvas(){ const r=overlay.getBoundingClientRect(); overlay.width=r.width; overlay.height=r.height; }
+window.addEventListener('resize',fitCanvas);
+function showBig(t){ if(t){big.style.display='block';big.textContent=t;} else big.style.display='none'; }
+
+async function ensureVision(){
+  if(!vision){ loadTxt.textContent='Đang khởi tạo runtime AI…'; vision=await FilesetResolver.forVisionTasks(V+"/wasm"); }
+}
+async function getTask(kind){
+  if(tasks[kind]) return tasks[kind];
+  await ensureVision();
+  loadTxt.textContent='Đang tải mô hình: '+kind+' …';
+  let t;
+  if(kind==='hand') t=await HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:M.hand,delegate:"GPU"},runningMode:"VIDEO",numHands:2});
+  else if(kind==='gesture') t=await GestureRecognizer.createFromOptions(vision,{baseOptions:{modelAssetPath:M.gesture,delegate:"GPU"},runningMode:"VIDEO",numHands:1});
+  else if(kind==='face') t=await FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:M.face,delegate:"GPU"},runningMode:"VIDEO",outputFaceBlendshapes:true,numFaces:1});
+  else if(kind==='pose') t=await PoseLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:M.pose,delegate:"GPU"},runningMode:"VIDEO",numPoses:1});
+  tasks[kind]=t; return t;
+}
+
+async function startCamera(){
+  try{
+    initAudio();
+    stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'},audio:false});
+    video.srcObject=stream; await video.play();
+    document.getElementById('startBtn').disabled=true;
+    document.getElementById('stopBtn').disabled=false;
+    running=true;
+    await activate(current);
+    loop();
+  }catch(e){ setStatus('❌ '+e.message,true); }
+}
+function stopCamera(){
+  running=false; if(rafId)cancelAnimationFrame(rafId);
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  document.getElementById('startBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+  ctx.clearRect(0,0,overlay.width,overlay.height); showBig('');
+  setStatus('Đã tắt camera.');
+}
+
+async function activate(mode){
+  if(!running) return;
+  showBig('');
+  try{
+    loader.classList.add('show');
+    mode.task=await getTask(mode.needs);
+    loader.classList.remove('show');
+    if(mode.reset)mode.reset();
+    setStatus('Đang chạy — '+mode.title);
+  }catch(e){
+    loader.classList.remove('show');
+    setStatus('❌ Không tải được model ('+mode.needs+'): '+e.message+' — kiểm tra mạng/https.',true);
+  }
+}
+
+function loop(){
+  if(!running) return;
+  rafId=requestAnimationFrame(loop);
+  if(video.readyState<2 || !current.task) return;
+  if(video.currentTime===lastVideoT) return;
+  lastVideoT=video.currentTime;
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  const ts=performance.now();
+  try{ current.frame(ts); }catch(e){/* bỏ qua khung lỗi */}
+  frames++; const now=performance.now();
+  if(now-lastT>500){ fpsPill.textContent=Math.round(frames*1000/(now-lastT))+' FPS'; frames=0; lastT=now; }
+}
+
+// tiện ích toạ độ (landmark chuẩn hoá 0..1 -> pixel canvas)
+const px=x=>x*overlay.width, py=y=>y*overlay.height;
+function dot(x,y,r,c){ ctx.beginPath();ctx.arc(px(x),py(y),r,0,7);ctx.fillStyle=c;ctx.fill(); }
+// vẽ emoji bù lật gương
+function emoji(e,x,y,size){ ctx.save();ctx.translate(px(x),py(y));ctx.scale(-1,1);
+  ctx.font=size+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(e,0,0);ctx.restore(); }
+
+/* ===================== MODE 1: Bàn tay + Pinch Draw ===================== */
+const MODES={};
+MODES.hand={
+  needs:'hand', task:null,
+  title:'✋ Bàn tay & Vẽ bằng ngón (Pinch Draw)',
+  desc:'Nhận diện 21 điểm mốc mỗi bàn tay. Chụm ngón cái + trỏ lại để vẽ, mở ra để nhấc bút.',
+  paint:document.createElement('canvas'), last:null, hue:280,
+  reset(){ this.paint.width=overlay.width;this.paint.height=overlay.height;this.last=null; },
+  frame(ts){
+    if(this.paint.width!==overlay.width){this.paint.width=overlay.width;this.paint.height=overlay.height;}
+    const res=this.task.detectForVideo(video,ts);
+    const du=draw();
+    ctx.drawImage(this.paint,0,0);
+    let pinching=false;
+    if(res.landmarks) for(const lm of res.landmarks){
+      du.drawConnectors(lm,HandLandmarker.HAND_CONNECTIONS,{color:'#a371f7',lineWidth:3});
+      du.drawLandmarks(lm,{color:'#3fb950',radius:3});
+      const thumb=lm[4], index=lm[8];
+      const d=Math.hypot((thumb.x-index.x),(thumb.y-index.y));
+      if(d<0.06){ // pinch
+        pinching=true;
+        const mx=(thumb.x+index.x)/2, my=(thumb.y+index.y)/2;
+        this.hue=(this.hue+1)%360;
+        const p={x:px(mx),y:py(my)};
+        const pc=this.paint.getContext('2d');
+        if(this.last){pc.strokeStyle=`hsl(${this.hue},90%,62%)`;pc.lineWidth=6;pc.lineCap='round';
+          pc.beginPath();pc.moveTo(this.last.x,this.last.y);pc.lineTo(p.x,p.y);pc.stroke();}
+        this.last=p;
+        dot(mx,my,10,`hsl(${this.hue},90%,62%)`);
+      }
+    }
+    if(!pinching) this.last=null;
+    hud.innerHTML=`Số tay: <b>${res.landmarks?.length||0}</b><br>`+
+      (pinching?'✍️ Đang vẽ':'👌 Chụm ngón cái + trỏ để vẽ');
+  }
+};
+
+/* ===================== MODE 2: Cử chỉ + Oẳn tù tì ===================== */
+MODES.gesture={
+  needs:'gesture', task:null,
+  title:'✌️ Nhận diện cử chỉ & Oẳn tù tì',
+  desc:'Nhận cử chỉ ✊ ✋ ✌️ 👍 👎 ☝️. Nhấn "Chơi" rồi ra ✊(búa)/✋(bao)/✌️(kéo) đấu với máy.',
+  playing:false, countdown:0, botMove:'', result:'', wins:0, loses:0,
+  reset(){ this.playing=false;this.result='';this.wins=0;this.loses=0;actionBtn.textContent='🎮 Chơi oẳn tù tì'; },
+  frame(ts){
+    const res=this.task.recognizeForVideo(video,ts);
+    const du=draw();
+    let g='None';
+    if(res.landmarks) for(const lm of res.landmarks){
+      du.drawConnectors(lm,GestureRecognizer.HAND_CONNECTIONS,{color:'#a371f7',lineWidth:3});
+      du.drawLandmarks(lm,{color:'#3fb950',radius:3});
+    }
+    if(res.gestures?.[0]?.[0]) g=res.gestures[0][0].categoryName;
+    const viMap={Closed_Fist:'✊ Búa',Open_Palm:'✋ Bao',Victory:'✌️ Kéo',Thumb_Up:'👍 Thích',
+      Thumb_Down:'👎 Chê',Pointing_Up:'☝️ Chỉ lên',ILoveYou:'🤟 ILY',None:'—'};
+    const rps={Closed_Fist:'✊',Open_Palm:'✋',Victory:'✌️'};
+    if(this.countdown>0){
+      this.countdown-=1/30;
+      showBig('⏱️ '+Math.ceil(this.countdown));
+      if(this.countdown<=0){
+        const bots=['✊','✋','✌️']; this.botMove=bots[Math.floor(Math.random()*3)];
+        const me=rps[g];
+        if(!me) this.result='❓ Không rõ tay bạn';
+        else{
+          const beats={'✊':'✌️','✋':'✊','✌️':'✋'};
+          if(me===this.botMove) this.result='🤝 Hoà';
+          else if(beats[me]===this.botMove){this.result='🎉 Bạn THẮNG';this.wins++;}
+          else{this.result='😵 Bạn THUA';this.loses++;}
+        }
+        this.playing=false; actionBtn.textContent='🎮 Chơi lại';
+      }
+    } else showBig('');
+    hud.innerHTML=`Cử chỉ: <b>${viMap[g]||g}</b>`+
+      (this.result?`<br>Máy: ${this.botMove} → ${this.result}`:'')+
+      `<br>Thắng ${this.wins} • Thua ${this.loses}`;
+  },
+  action(){ this.playing=true; this.countdown=3; this.result=''; showBig('⏱️ 3'); }
+};
+
+/* ===================== MODE 3: Khuôn mặt + filter + đếm chớp mắt ===================== */
+MODES.face={
+  needs:'face', task:null,
+  title:'😎 Khuôn mặt — Filter & đếm chớp mắt',
+  desc:'478 điểm mốc khuôn mặt. Đeo kính + mũ ảo, đếm số lần chớp mắt bằng blendshapes.',
+  blinks:0, eyeClosed:false, mesh:true,
+  reset(){ this.blinks=0;this.eyeClosed=false;actionBtn.textContent='🕸️ Bật/tắt lưới mặt'; },
+  frame(ts){
+    const res=this.task.detectForVideo(video,ts);
+    if(res.faceLandmarks) for(const lm of res.faceLandmarks){
+      if(this.mesh){
+        const du=draw();
+        du.drawConnectors(lm,FaceLandmarker.FACE_LANDMARKS_TESSELATION,{color:'#ffffff22',lineWidth:1});
+        du.drawConnectors(lm,FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,{color:'#a371f7',lineWidth:2});
+      }
+      // kính: dùng mắt trái(33/133) & phải(362/263), mũi 1
+      const le={x:(lm[33].x+lm[133].x)/2,y:(lm[33].y+lm[133].y)/2};
+      const re={x:(lm[362].x+lm[263].x)/2,y:(lm[362].y+lm[263].y)/2};
+      const eyeDist=Math.hypot(le.x-re.x,le.y-re.y);
+      const glassSize=eyeDist*overlay.width*2.4;
+      const cx=(le.x+re.x)/2, cy=(le.y+re.y)/2;
+      emoji('🕶️',cx,cy,glassSize);
+      // mũ ở trán (landmark 10)
+      const fore=lm[10];
+      emoji('🎩',fore.x,fore.y-eyeDist*1.2,glassSize*0.9);
+    }
+    // đếm chớp mắt qua blendshapes
+    const bs=res.faceBlendshapes?.[0]?.categories;
+    if(bs){
+      const bl=n=>bs.find(c=>c.categoryName===n)?.score||0;
+      const closed=(bl('eyeBlinkLeft')+bl('eyeBlinkRight'))/2 > 0.5;
+      if(closed && !this.eyeClosed){ this.blinks++; }
+      this.eyeClosed=closed;
+      hud.innerHTML=`Khuôn mặt: <b>${res.faceLandmarks?.length||0}</b><br>😴 Chớp mắt: <b>${this.blinks}</b>`;
+    } else hud.innerHTML='Đưa mặt vào khung hình…';
+  },
+  action(){ this.mesh=!this.mesh; }
+};
+
+/* ===================== MODE 4: Khung xương + đếm giơ tay (reps) ===================== */
+MODES.pose={
+  needs:'pose', task:null,
+  title:'🏋️ Khung xương — đếm động tác giơ tay',
+  desc:'33 điểm khung xương. Giơ cả hai tay lên qua đầu rồi hạ xuống = 1 lần. Đứng cách camera ~2m để thấy nửa người trên.',
+  reps:0, up:false,
+  reset(){ this.reps=0;this.up=false; },
+  frame(ts){
+    const res=this.task.detectForVideo(video,ts);
+    if(res.landmarks) for(const lm of res.landmarks){
+      const du=draw();
+      du.drawConnectors(lm,PoseLandmarker.POSE_CONNECTIONS,{color:'#a371f7',lineWidth:3});
+      du.drawLandmarks(lm,{color:'#3fb950',radius:3});
+      // 11/12 vai, 15/16 cổ tay, 0 mũi
+      const lWrist=lm[15], rWrist=lm[16], nose=lm[0], lSh=lm[11], rSh=lm[12];
+      // y nhỏ = cao hơn. Cả 2 cổ tay cao hơn mũi => tay giơ lên
+      const handsUp = lWrist.y<nose.y && rWrist.y<nose.y;
+      const handsDown = lWrist.y>lSh.y && rWrist.y>rSh.y;
+      if(handsUp && !this.up){ this.up=true; }
+      if(handsDown && this.up){ this.up=false; this.reps++; }
+      showBig(handsUp?'🙌 Giơ lên!':'⬇️ Hạ xuống');
+    }
+    if(!res.landmarks?.length){ showBig(''); hud.innerHTML='Đứng lùi để thấy nửa người trên…'; return; }
+    hud.innerHTML=`Số reps giơ tay: <b>${this.reps}</b>`;
+  }
+};
+
+/* ===================== MODE 5: Chuột ảo bằng ngón tay ===================== */
+MODES.mouse={
+  needs:'hand', task:null,
+  title:'🖱️ Chuột ảo bằng ngón tay',
+  desc:'Ngón trỏ = con trỏ. Chụm ngón cái + trỏ = "click". Bấm nổ các nút để ghi điểm. (Điều khiển con trỏ ẢO trong trang, không phải chuột hệ điều hành.)',
+  targets:[], score:0, cursor:null, wasPinch:false, cooldown:0,
+  reset(){ this.score=0; this.spawn(); this.wasPinch=false; },
+  spawn(){
+    this.targets=[]; const cols=3,rows=2;
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)
+      this.targets.push({x:(c+0.5)/cols, y:0.25+(r+0.5)/rows*0.45, r:34, hit:false,
+        hue:(c*60+r*120)});
+  },
+  frame(ts){
+    const res=this.task.detectForVideo(video,ts);
+    const du=draw();
+    let pinch=false, cx=null,cy=null;
+    if(res.landmarks?.[0]){
+      const lm=res.landmarks[0];
+      du.drawConnectors(lm,HandLandmarker.HAND_CONNECTIONS,{color:'#a371f733',lineWidth:2});
+      const idx=lm[8], th=lm[4];
+      cx=idx.x; cy=idx.y;
+      pinch=Math.hypot(idx.x-th.x,idx.y-th.y)<0.06;
+    }
+    // vẽ nút
+    for(const t of this.targets){
+      if(t.hit) continue;
+      ctx.beginPath(); ctx.arc(px(t.x),py(t.y),t.r,0,7);
+      ctx.fillStyle=`hsl(${t.hue},70%,55%)`; ctx.fill();
+      ctx.lineWidth=3; ctx.strokeStyle='#fff'; ctx.stroke();
+    }
+    // con trỏ
+    if(cx!=null){
+      ctx.beginPath(); ctx.arc(px(cx),py(cy), pinch?10:16, 0,7);
+      ctx.fillStyle=pinch?'rgba(248,81,73,.9)':'rgba(255,255,255,.35)'; ctx.fill();
+      ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
+      // click = cạnh lên của pinch
+      if(pinch && !this.wasPinch){
+        for(const t of this.targets){
+          if(!t.hit && Math.hypot((t.x-cx)*overlay.width,(t.y-cy)*overlay.height)<t.r+14){
+            t.hit=true; this.score++; playNote(523+Math.random()*220,0.25,'square',0.25);
+          }
+        }
+        if(this.targets.every(t=>t.hit)) this.spawn();
+      }
+      this.wasPinch=pinch;
+    }
+    hud.innerHTML=`Điểm: <b>${this.score}</b><br>`+
+      (cx==null?'👆 Đưa tay vào khung':(pinch?'🤏 CLICK':'👉 Di ngón trỏ, chụm để click'));
+  }
+};
+
+/* ===================== MODE 6: Piano bằng ngón tay ===================== */
+MODES.piano={
+  needs:'hand', task:null,
+  title:'🎹 Piano bằng ngón tay',
+  desc:'Đưa đầu ngón tay xuống vùng phím ở đáy màn hình để chơi nhạc (thang âm Đô–Rê–Mi…). Chơi được nhiều ngón cùng lúc.',
+  keys:[
+    {n:'Đô',f:261.63},{n:'Rê',f:293.66},{n:'Mi',f:329.63},{n:'Fa',f:349.23},
+    {n:'Sol',f:392.00},{n:'La',f:440.00},{n:'Si',f:493.88},{n:'Đô²',f:523.25}
+  ],
+  active:new Set(), lit:{},
+  reset(){ this.active=new Set(); this.lit={}; },
+  frame(ts){
+    const res=this.task.detectForVideo(video,ts);
+    const N=this.keys.length, zoneY=0.62;
+    const kw=overlay.width/N, top=py(zoneY);
+    // vẽ phím
+    for(let i=0;i<N;i++){
+      const on=(this.lit[i]||0)>0;
+      ctx.fillStyle= on?'#a371f7':'#f4f4f5';
+      ctx.fillRect(i*kw+1, top, kw-2, overlay.height-top);
+      ctx.strokeStyle='#0d1117'; ctx.lineWidth=2;
+      ctx.strokeRect(i*kw+1, top, kw-2, overlay.height-top);
+      // nhãn (bù lật gương)
+      ctx.save(); ctx.translate(i*kw+kw/2, overlay.height-22); ctx.scale(-1,1);
+      ctx.fillStyle= on?'#fff':'#333'; ctx.font='bold 16px system-ui';
+      ctx.textAlign='center'; ctx.fillText(this.keys[i].n,0,0); ctx.restore();
+      if(this.lit[i]>0) this.lit[i]--;
+    }
+    ctx.strokeStyle='#3fb950'; ctx.lineWidth=2; ctx.setLineDash([8,6]);
+    ctx.beginPath(); ctx.moveTo(0,top); ctx.lineTo(overlay.width,top); ctx.stroke(); ctx.setLineDash([]);
+
+    // các đầu ngón đang trong vùng phím
+    const pressed=new Set();
+    const tips=[4,8,12,16,20];
+    if(res.landmarks) res.landmarks.forEach((lm,hi)=>{
+      const du=draw();
+      du.drawConnectors(lm,HandLandmarker.HAND_CONNECTIONS,{color:'#a371f755',lineWidth:2});
+      tips.forEach(ti=>{
+        const p=lm[ti];
+        dot(p.x,p.y,6,'#58a6ff');
+        if(p.y>=zoneY){
+          const key=Math.min(N-1,Math.max(0,Math.floor(p.x*N)));
+          pressed.add(hi+'-'+ti); // định danh ngón để chống lặp
+          const id=key;
+          if(!this.active.has('note'+id)){ playNote(this.keys[id].f,0.7); this.lit[id]=6; this.active.add('note'+id); }
+        }
+      });
+    });
+    // nhả note nếu không còn ngón nào trong ô phím tương ứng
+    // tính lại tập phím đang bị nhấn
+    const nowKeys=new Set();
+    if(res.landmarks) res.landmarks.forEach(lm=>tips.forEach(ti=>{
+      const p=lm[ti]; if(p.y>=zoneY) nowKeys.add('note'+Math.min(N-1,Math.max(0,Math.floor(p.x*N))));
+    }));
+    for(const k of [...this.active]) if(!nowKeys.has(k)) this.active.delete(k);
+
+    hud.innerHTML=`🎹 ${this.keys.length} phím<br><span style="color:var(--muted)">Chạm đầu ngón vào dải phím ở đáy</span>`;
+  }
+};
+
+/* ===================== TABS ===================== */
+const ORDER=[['hand','✋ Tay+Vẽ'],['gesture','✌️ Cử chỉ'],['face','😎 Mặt'],
+  ['pose','🏋️ Khung xương'],['mouse','🖱️ Chuột ảo'],['piano','🎹 Piano']];
+const tabsEl=document.getElementById('tabs');
+ORDER.forEach(([k,l])=>{const b=document.createElement('button');b.className='tab';b.textContent=l;b.dataset.key=k;
+  b.onclick=()=>selectMode(k);tabsEl.appendChild(b);});
+
+function selectMode(key){
+  current=MODES[key];
+  document.getElementById('modeTitle').textContent=current.title;
+  document.getElementById('modeDesc').textContent=current.desc;
+  [...tabsEl.children].forEach(t=>t.classList.toggle('active',t.dataset.key===key));
+  ctx.clearRect(0,0,overlay.width,overlay.height); hud.innerHTML=''; showBig('');
+  actionBtn.style.display = current.action?'inline-block':'none';
+  if(key==='gesture') actionBtn.textContent='🎮 Chơi oẳn tù tì';
+  if(key==='face') actionBtn.textContent='🕸️ Bật/tắt lưới mặt';
+  if(running) activate(current);
+}
+
+document.getElementById('startBtn').onclick=startCamera;
+document.getElementById('stopBtn').onclick=stopCamera;
+actionBtn.onclick=()=>{ if(current.action) current.action(); };
+document.getElementById('clearBtn').onclick=()=>{ if(current.reset)current.reset(); ctx.clearRect(0,0,overlay.width,overlay.height); };
+
+fitCanvas();
+selectMode('hand');
+setStatus('Nhấn "Bật camera". Lần đầu mỗi trò sẽ tải model — cần mạng & chạy qua https/localhost.');
+</script>
+</body>
+</html>
