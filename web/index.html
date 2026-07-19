@@ -114,6 +114,24 @@
     </div>
 
     <div class="card">
+      <span class="tag">Camera · YuNet + SFace · Nhận diện</span>
+      <h2>🧑‍🤝‍🧑 Face Recognition</h2>
+      <p>Nhận diện khuôn mặt và dán nhãn tên người trực tiếp trên camera, dựa vào dữ liệu bạn tự gắn nhãn. Tối ưu chạy trên máy không có CUDA (Intel Iris Xe).</p>
+      <ul>
+        <li>Quy trình: <code>Cài đặt</code> → <code>Thu mặt/Gắn nhãn</code> → <code>Train</code> → <code>Camera</code>.</li>
+        <li>Lần đầu bấm <b>Cài đặt</b> (tạo venv + tải model). Xong mới train & chạy camera.</li>
+      </ul>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button style="flex:1 1 100%; background:#334155; color:#e2e8f0;" onclick="launch('face_setup')">⚙️ Cài đặt (chạy 1 lần)</button>
+        <button style="flex:1 1 100%; background:#0ea5e9; color:#082f49;" onclick="openFolder('face_data')">📂 Mở thư mục __data (copy ảnh vào đây)</button>
+        <button style="flex:1 1 46%;" onclick="launch('face_enroll')">📷 Thu mặt</button>
+        <button style="flex:1 1 46%;" onclick="launch('face_label')">🏷️ Gắn nhãn</button>
+        <button style="flex:1 1 46%; background:#22c55e; color:#052e16;" onclick="launch('face_train')">🧠 Train</button>
+        <button style="flex:1 1 46%;" onclick="launch('face_camera')">▶️ Camera</button>
+      </div>
+    </div>
+
+    <div class="card">
       <span class="tag">Camera · MediaPipe · Game</span>
       <h2>🧺 Fruit Catch</h2>
       <p>Game hứng hoa quả bằng khuôn mặt: di chuyển đầu để đưa rổ, hứng emoji rơi lộn để ghi điểm. Đủ 10 quả thì bắn pháo hoa 🎆.</p>
@@ -156,6 +174,46 @@
       </ul>
       <button onclick="launch('pose_echo')">Khởi chạy</button>
     </div>
+
+    <div class="card">
+      <span class="tag">Camera · MediaPipe · Game</span>
+      <h2>🤪 Face Emoji Party</h2>
+      <p>Tự động dán emoji "nhảy nhảy ngoáy ngoáy" lên mắt, mũi, tai, mồm. Cứ 5–15s đổi 1 emoji ngẫu nhiên. Há mồm là emoji bắn ra liên tục như vòi phun — ngậm lại thì dừng.</p>
+      <ul>
+        <li><code>R</code> đổi hết emoji · <code>M</code> tiếng · <code>+/-</code> ngưỡng há mồm.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_face_emoji.bat</code> trước.</li>
+      </ul>
+      <button onclick="launch('face_emoji')">Khởi chạy</button>
+    </div>
+
+    <div class="card">
+      <span class="tag">Camera · MediaPipe Pose · Game</span>
+      <h2>🪽 Angel Wings</h2>
+      <p>Bắt người (1 hoặc nhiều) rồi gắn đôi cánh vào lưng. Bật chế độ vẫy cánh, hoặc chế độ cánh phát hiệu ứng lấp lánh.</p>
+      <ul>
+        <li>Bỏ PNG cánh trái (nền trong suốt) vào <code>services\angel_wings\__data\wings\</code> (trống thì có cánh mặc định).</li>
+        <li><code>F</code> vẫy cánh · <code>E</code> hiệu ứng · <code>+/-</code> cỡ cánh.</li>
+        <li>Chưa dùng lần nào? Chạy <code>__bat\setup_angel_wings.bat</code> trước.</li>
+      </ul>
+      <div style="display:flex; gap:10px;">
+        <button style="flex:1;" onclick="launch('angel_wings')">Khởi chạy</button>
+        <button style="flex:1; background:#0ea5e9; color:#082f49;" onclick="openFolder('wings_data')">📂 Mở thư mục cánh</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="tag">Trình duyệt · Không cần cài đặt</span>
+      <h2>🎥 Camera AI Playground</h2>
+      <p>Bộ demo camera + AI chạy thẳng trong trình duyệt (không cần Python/venv). Camera chỉ xử lý cục bộ trên máy, không gửi hình ảnh đi đâu.</p>
+      <ul>
+        <li>🟦 Thị giác cổ điển: dò chuyển động, air paint, color tracker... (offline).</li>
+        <li>🟪 MediaPipe: bàn tay, cử chỉ, khuôn mặt, khung xương... (cần mạng lần đầu).</li>
+      </ul>
+      <div style="display:flex; gap:10px;">
+        <button style="flex:1;" onclick="window.open('/camera-ai-playground.html', '_blank')">🟦 Cổ điển</button>
+        <button style="flex:1; background:#a371f7; color:#0b1220;" onclick="window.open('/camera-ai-mediapipe.html', '_blank')">🟪 MediaPipe</button>
+      </div>
+    </div>
   </main>
 
   <div id="status"></div>
@@ -167,6 +225,18 @@
       box.innerHTML = '';
       try {
         const res = await fetch('/api/launch?service=' + encodeURIComponent(service), { method: 'POST' });
+        const data = await res.json();
+        box.innerHTML = '<div class="toast' + (data.ok ? '' : ' err') + '">' + data.message + '</div>';
+      } catch (e) {
+        box.innerHTML = '<div class="toast err">Lỗi kết nối server: ' + e + '</div>';
+      }
+    }
+
+    async function openFolder(folder) {
+      const box = document.getElementById('status');
+      box.innerHTML = '';
+      try {
+        const res = await fetch('/api/open?folder=' + encodeURIComponent(folder), { method: 'POST' });
         const data = await res.json();
         box.innerHTML = '<div class="toast' + (data.ok ? '' : ' err') + '">' + data.message + '</div>';
       } catch (e) {

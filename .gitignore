@@ -14,6 +14,8 @@ env/
 *.pt
 *.onnx
 *.engine
+*.task
+*.tflite
 *_openvino_model/
 
 # ===== OS / Editor =====
@@ -37,3 +39,18 @@ services/people_counter/data/*
 # ===== Anh canh bao / log Security Cam (giu thu muc, bo file) =====
 services/security_cam/data/*
 !services/security_cam/data/.gitkeep
+
+# ===== Face Recognition: du lieu train + embeddings (giu thu muc, bo file) =====
+services/face_recognition/__data/**
+!services/face_recognition/__data/
+!services/face_recognition/__data/_inbox/
+!services/face_recognition/__data/.gitkeep
+!services/face_recognition/__data/_inbox/.gitkeep
+services/face_recognition/models/*
+!services/face_recognition/models/.gitkeep
+
+# ===== Angel Wings: anh canh nguoi dung + model (giu thu muc, bo file) =====
+services/angel_wings/__data/wings/*
+!services/angel_wings/__data/wings/.gitkeep
+services/angel_wings/models/*
+!services/angel_wings/models/.gitkeep

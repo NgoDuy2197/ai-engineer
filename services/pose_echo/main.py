@@ -64,7 +64,11 @@ def main():
     ap = argparse.ArgumentParser(description="Ve nguoi que tre 3 giay")
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--delay", type=float, default=3.0, help="Do tre (giay)")
+    ap.add_argument("--max-poses", type=int, default=2,
+                    help="So nguoi toi da nhan dien (num_poses)")
     args = ap.parse_args()
+
+    max_poses = max(1, args.max_poses)
 
     use_dshow = os.name == "nt"
     cap = cv2.VideoCapture(args.camera, cv2.CAP_DSHOW if use_dshow else 0)
@@ -82,7 +86,7 @@ def main():
     options = mp_vision.PoseLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=MODEL_PATH),
         running_mode=mp_vision.RunningMode.VIDEO,
-        num_poses=1,
+        num_poses=max_poses,
         min_pose_detection_confidence=0.5,
         min_tracking_confidence=0.5)
     pose = mp_vision.PoseLandmarker.create_from_options(options)
@@ -90,7 +94,9 @@ def main():
     last_ts = -1
 
     delay = max(0.5, args.delay)
-    buf = deque()                # (thoi_gian, pts | None)
+    # PER-PERSON: moi nguoi (theo chi so pose) co bo dem lich su rieng.
+    # bufs[i] = deque cac (thoi_gian, pts | None) cua nguoi thu i.
+    bufs = {}                    # {chi_so_pose: deque((thoi_gian, pts | None))}
     record_start = time.time()   # moc bat dau ghi (de tinh khi nao bong hien)
     show_live = True
 
@@ -114,25 +120,40 @@ def main():
         last_ts = ts
         res = pose.detect_for_video(mp_img, ts)
 
-        cur_pts = None
+        # ==== gom pose cua tung nguoi (theo chi so) ====
+        # LAP qua tat ca pose trong ket qua, moi nguoi mot danh sach diem.
+        cur_by_person = {}
         if res.pose_landmarks:
-            cur_pts = [(p.x, p.y, p.visibility) for p in res.pose_landmarks[0]]
+            for i, lm in enumerate(res.pose_landmarks):
+                cur_by_person[i] = [(p.x, p.y, p.visibility) for p in lm]
 
-        # ==== luu vao bo dem + cat bo phan cu hon do tre ====
-        buf.append((now, cur_pts))
-        while len(buf) >= 2 and now - buf[0][0] > delay:
-            buf.popleft()
+        # ==== luu vao bo dem tung nguoi + cat bo phan cu hon do tre ====
+        # Ghi cho tat ca chi so da tung xuat hien (nguoi vang mat -> luu None)
+        # de bong van chay lien tuc theo thoi gian.
+        active_idx = set(bufs.keys()) | set(cur_by_person.keys())
+        for i in active_idx:
+            b = bufs.setdefault(i, deque())
+            b.append((now, cur_by_person.get(i)))
+            while len(b) >= 2 and now - b[0][0] > delay:
+                b.popleft()
 
-        # ve khung xuong hien tai (mo, de tham chieu)
-        if show_live and cur_pts is not None:
-            draw_skeleton(frame, cur_pts, w, h, (170, 170, 170), 2, 3, 0.35)
+        # ve khung xuong hien tai (mo, de tham chieu) cho TUNG nguoi
+        if show_live:
+            for cur_pts in cur_by_person.values():
+                draw_skeleton(frame, cur_pts, w, h, (170, 170, 170), 2, 3, 0.35)
 
-        # ==== ve "bong" tre ~delay giay ====
+        # ==== ve "bong" tre ~delay giay cho TUNG nguoi ====
         elapsed = now - record_start
         if elapsed >= delay:
-            ghost_pts = buf[0][1]                     # frame cu nhat trong cua so ~ delay
-            draw_skeleton(frame, ghost_pts, w, h, (80, 230, 90), 5, 6, 0.9)
-            if ghost_pts is None:
+            any_ghost = False
+            for b in bufs.values():
+                if not b:
+                    continue
+                ghost_pts = b[0][1]                   # frame cu nhat trong cua so ~ delay
+                if ghost_pts is not None:
+                    any_ghost = True
+                draw_skeleton(frame, ghost_pts, w, h, (80, 230, 90), 5, 6, 0.9)
+            if not any_ghost:
                 cv2.putText(frame, "(3 giay truoc chua thay nguoi)",
                             (w // 2 - 200, h // 2),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (80, 230, 90), 2)
@@ -156,16 +177,16 @@ def main():
             break
         elif k in (ord("+"), ord("=")):
             delay = min(6.0, delay + 0.5)
-            buf.clear()
+            bufs.clear()          # xoa buffer tat ca nguoi
             record_start = now
         elif k in (ord("-"), ord("_")):
             delay = max(0.5, delay - 0.5)
-            buf.clear()
+            bufs.clear()          # xoa buffer tat ca nguoi
             record_start = now
         elif k == ord("l"):
             show_live = not show_live
         elif k == ord("c"):
-            buf.clear()
+            bufs.clear()          # xoa buffer tat ca nguoi
             record_start = now
 
     cap.release()

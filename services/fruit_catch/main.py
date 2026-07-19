@@ -119,6 +119,21 @@ def beep(freq, dur):
     threading.Thread(target=_b, daemon=True).start()
 
 
+def draw_basket(frame, basket_x, bw2, basket_top, h):
+    """Ve 1 cai ro tai vi tri basket_x."""
+    bl, br = int(basket_x - bw2), int(basket_x + bw2)
+    by, bb = basket_top, h - 24
+    poly = np.array([[bl, by], [br, by],
+                     [int(basket_x + bw2 * 0.6), bb],
+                     [int(basket_x - bw2 * 0.6), bb]], np.int32)
+    cv2.fillPoly(frame, [poly], (40, 90, 160))
+    cv2.polylines(frame, [poly], True, (30, 60, 110), 3)
+    cv2.line(frame, (bl, by), (br, by), (60, 140, 220), 6)   # mieng ro
+    for gx in range(bl + 20, br, 26):                        # nan doc
+        cv2.line(frame, (gx, by), (int(gx * 0.9 + basket_x * 0.1), bb),
+                 (30, 60, 110), 1)
+
+
 def spawn_fireworks(particles, w, h):
     """Tao 1 chum phao hoa tai vi tri ngau nhien."""
     cx = random.randint(int(w * 0.2), int(w * 0.8))
@@ -139,6 +154,8 @@ def main():
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--size", type=int, default=70, help="Kich thuoc emoji hoa qua")
     ap.add_argument("--speed", type=float, default=1.0, help="He so toc do roi")
+    ap.add_argument("--max-faces", type=int, default=0,
+                    help="Gioi han so mat/ro (0 = khong gioi han)")
     args = ap.parse_args()
 
     use_dshow = os.name == "nt"
@@ -172,7 +189,7 @@ def main():
     fruits = []              # {x, y, vy, kind, angle, spin}
     particles = []           # phao hoa
     fireworks_until = 0.0
-    basket_x = None
+    baskets = []             # danh sach vi tri x cua cac ro (moi mat 1 ro)
     frame_i = 0
     spawn_every = 26         # so frame giua 2 lan roi qua
     win = "Fruit Catch"
@@ -185,23 +202,36 @@ def main():
         frame = cv2.flip(frame, 1)      # guong selfie
         h, w = frame.shape[:2]
         frame_i += 1
-        if basket_x is None:
-            basket_x = w / 2
+        bw2 = 150                       # nua chieu rong mieng ro
+        basket_top = h - 96
 
-        # ==== dinh vi mat -> vi tri ro ====
+        # ==== dinh vi TAT CA mat -> moi mat 1 cai ro ====
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         res = face.detect_for_video(mp_img, frame_i * 33)  # timestamp ms tang dan
-        face_found = False
-        if res.detections:
-            box = res.detections[0].bounding_box     # toa do PIXEL (khong phai ti le)
-            fx = box.origin_x + box.width / 2.0
-            basket_x = 0.75 * basket_x + 0.25 * fx   # lam muot
-            face_found = True
+        dets = list(res.detections) if res.detections else []
+        # gioi han so mat neu duoc yeu cau (lay mat co diem tin cay cao nhat)
+        if args.max_faces > 0 and len(dets) > args.max_faces:
+            dets.sort(key=lambda d: d.categories[0].score, reverse=True)
+            dets = dets[:args.max_faces]
+        # tam x cua tung mat (bounding_box la toa do PIXEL, khong phai ti le)
+        face_centers = sorted(
+            d.bounding_box.origin_x + d.bounding_box.width / 2.0 for d in dets)
+        face_found = len(face_centers) > 0
 
-        bw2 = 150                       # nua chieu rong mieng ro
-        basket_x = float(np.clip(basket_x, bw2, w - bw2))
-        basket_top = h - 96
+        if face_found:
+            # ghep tung ro cu voi mat theo thu tu trai->phai de lam muot
+            new_baskets = []
+            for i, fx in enumerate(face_centers):
+                if i < len(baskets):
+                    bx = 0.75 * baskets[i] + 0.25 * fx   # lam muot
+                else:
+                    bx = fx
+                new_baskets.append(float(np.clip(bx, bw2, w - bw2)))
+            baskets = new_baskets
+        elif not baskets:
+            # chua tung thay mat -> giu 1 ro o giua nhu truoc (khong crash)
+            baskets = [w / 2.0]
 
         # ==== sinh qua moi ====
         if frame_i % spawn_every == 0:
@@ -214,14 +244,15 @@ def main():
             })
 
         # ==== cap nhat + ve qua ====
-        catch_min, catch_max = basket_x - bw2, basket_x + bw2
         alive = []
         for f in fruits:
             f["vy"] += 0.05 * args.speed        # trong luc nhe
             f["y"] += f["vy"]
             f["angle"] += f["spin"]
-            caught = (basket_top - 10 <= f["y"] <= basket_top + 46
-                      and catch_min <= f["x"] <= catch_max)
+            # bat ky ro nao hung trung deu tinh (diem dung chung)
+            in_zone = basket_top - 10 <= f["y"] <= basket_top + 46
+            caught = in_zone and any(
+                bx - bw2 <= f["x"] <= bx + bw2 for bx in baskets)
             if caught:
                 score += 1
                 beep(1300, 70)                  # tieng "tinh" nhe
@@ -237,18 +268,9 @@ def main():
             alive.append(f)
         fruits = alive
 
-        # ==== ve ro ====
-        bl, br = int(basket_x - bw2), int(basket_x + bw2)
-        by, bb = basket_top, h - 24
-        poly = np.array([[bl, by], [br, by],
-                         [int(basket_x + bw2 * 0.6), bb],
-                         [int(basket_x - bw2 * 0.6), bb]], np.int32)
-        cv2.fillPoly(frame, [poly], (40, 90, 160))
-        cv2.polylines(frame, [poly], True, (30, 60, 110), 3)
-        cv2.line(frame, (bl, by), (br, by), (60, 140, 220), 6)   # mieng ro
-        for gx in range(bl + 20, br, 26):                        # nan doc
-            cv2.line(frame, (gx, by), (int(gx * 0.9 + basket_x * 0.1), bb),
-                     (30, 60, 110), 1)
+        # ==== ve TAT CA cac ro ====
+        for bx in baskets:
+            draw_basket(frame, bx, bw2, basket_top, h)
 
         # ==== phao hoa ====
         if frame_i < fireworks_until and frame_i % 8 == 0:
@@ -273,7 +295,10 @@ def main():
         cv2.rectangle(frame, (0, 0), (w, 86), (0, 0, 0), -1)
         cv2.putText(frame, f"DIEM: {score}", (16, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 180), 2)
-        cv2.putText(frame, f"Rot: {missed}    Toi phao hoa: {10 - score % 10} qua",
+        n_players = len(baskets) if face_found else 0
+        cv2.putText(frame,
+                    f"Rot: {missed}    Toi phao hoa: {10 - score % 10} qua"
+                    f"    Ro: {n_players}",
                     (16, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
         hint = "Di chuyen dau de dua ro   |   C:choi lai  Q:thoat"
         if not face_found:

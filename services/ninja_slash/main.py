@@ -84,6 +84,8 @@ def draw_object(frame, o):
 def main():
     ap = argparse.ArgumentParser(description="Chem hoa qua bay bang ngon tay")
     ap.add_argument("--camera", type=int, default=0)
+    ap.add_argument("--max-hands", type=int, default=2,
+                    help="So ban tay toi da (moi tay 1 luoi kiem)")
     args = ap.parse_args()
 
     use_dshow = os.name == "nt"
@@ -102,7 +104,7 @@ def main():
     options = mp_vision.HandLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=MODEL_PATH),
         running_mode=mp_vision.RunningMode.VIDEO,
-        num_hands=1,
+        num_hands=args.max_hands,
         min_hand_detection_confidence=0.6,
         min_tracking_confidence=0.5)
     landmarker = mp_vision.HandLandmarker.create_from_options(options)
@@ -117,7 +119,7 @@ def main():
                 "combo": 0, "combo_t": 0.0, "lives": 3, "over": False, "frame": 0}
 
     G = new_game()
-    trail = deque(maxlen=7)
+    trails = {}                                   # moi ban tay (theo chi so) 1 trail rieng
     spawn_every = 22
 
     while True:
@@ -138,18 +140,27 @@ def main():
         last_ts = ts
         res = landmarker.detect_for_video(mp_img, ts)
 
-        tip = None
+        # cap nhat trail PER-HAND: moi tay 1 trail theo chi so tay
+        seen = set()
         if res.hand_landmarks:
-            lm = res.hand_landmarks[0]
-            tip = (lm[8].x * w, lm[8].y * h)     # dau ngon tro
-            trail.append(tip)
-        else:
-            trail.clear()
+            for i, lm in enumerate(res.hand_landmarks):
+                tip = (lm[8].x * w, lm[8].y * h)  # dau ngon tro cua tay i
+                if i not in trails:
+                    trails[i] = deque(maxlen=7)
+                trails[i].append(tip)
+                seen.add(i)
+        # xoa trail cua nhung tay khong con xuat hien
+        for i in [k for k in trails if k not in seen]:
+            del trails[i]
 
-        blade_fast = False
-        if len(trail) >= 2:
-            spd = math.hypot(trail[-1][0] - trail[-2][0], trail[-1][1] - trail[-2][1])
-            blade_fast = spd > 14                # phai vung nhanh moi cat duoc
+        # tinh blade_fast cho tung tay (tay nao vung nhanh moi cat duoc)
+        blade_fast = {}
+        for i, tr in trails.items():
+            fast = False
+            if len(tr) >= 2:
+                spd = math.hypot(tr[-1][0] - tr[-2][0], tr[-1][1] - tr[-2][1])
+                fast = spd > 14
+            blade_fast[i] = fast
 
         # ==== logic game ====
         if not G["over"]:
@@ -166,8 +177,14 @@ def main():
                 o["y"] += o["vy"]
                 o["angle"] += o["spin"]
 
-                if (tip is not None and blade_fast and len(trail) >= 2
-                        and pt_seg_dist((o["x"], o["y"]), trail[-2], trail[-1]) < o["r"] + 6):
+                # LAP qua tung tay: bat ky tay nao vung nhanh va cat trung deu tinh
+                hit = False
+                for i, tr in trails.items():
+                    if (blade_fast.get(i) and len(tr) >= 2
+                            and pt_seg_dist((o["x"], o["y"]), tr[-2], tr[-1]) < o["r"] + 6):
+                        hit = True
+                        break
+                if hit:
                     if o["kind"] == "bomb":
                         G["over"] = True
                         for _ in range(60):
@@ -206,14 +223,17 @@ def main():
                 alive_p.append(p)
         G["particles"] = alive_p
 
-        # ==== luoi kiem ====
-        if tip is not None and len(trail) >= 2:
-            pts_ = list(trail)
-            for i in range(1, len(pts_)):
-                col = (255, 255, 200) if blade_fast else (180, 180, 120)
-                cv2.line(frame, (int(pts_[i - 1][0]), int(pts_[i - 1][1])),
-                         (int(pts_[i][0]), int(pts_[i][1])),
-                         col, int(2 + i * 1.6), cv2.LINE_AA)
+        # ==== luoi kiem: ve cho TUNG tay ====
+        for hi, tr in trails.items():
+            if len(tr) < 2:
+                continue
+            pts_ = list(tr)
+            for j in range(1, len(pts_)):
+                col = (255, 255, 200) if blade_fast.get(hi) else (180, 180, 120)
+                cv2.line(frame, (int(pts_[j - 1][0]), int(pts_[j - 1][1])),
+                         (int(pts_[j][0]), int(pts_[j][1])),
+                         col, int(2 + j * 1.6), cv2.LINE_AA)
+            tip = pts_[-1]
             cv2.circle(frame, (int(tip[0]), int(tip[1])), 10, (255, 255, 255), 2)
 
         # ==== HUD ====
@@ -256,7 +276,7 @@ def main():
             best = max(G["best"], G["score"])
             G = new_game()
             G["best"] = best
-            trail.clear()
+            trails.clear()                       # xoa tat ca trail cua moi tay
 
     cap.release()
     cv2.destroyAllWindows()

@@ -104,6 +104,8 @@ def main():
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--width", type=int, default=1000)
     ap.add_argument("--height", type=int, default=700)
+    ap.add_argument("--max-hands", type=int, default=2,
+                    help="So ban tay toi da nhan dien cung luc")
     args = ap.parse_args()
 
     images = load_images(args.images)
@@ -127,19 +129,23 @@ def main():
     options = mp_vision.HandLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=model_path),
         running_mode=mp_vision.RunningMode.VIDEO,
-        num_hands=1,
+        num_hands=max(1, args.max_hands),
         min_hand_detection_confidence=0.6,
         min_tracking_confidence=0.5)
     landmarker = mp_vision.HandLandmarker.create_from_options(options)
 
-    xs = deque(maxlen=12)            # lich su (thoi_gian, x) de phat hien quet 1 ngon
-    last_swipe = 0.0
+    # --- state RIENG theo tung tay (dict theo chi so tay i) de khong lan cu chi ---
+    xs = {}                          # i -> deque (thoi_gian, x) phat hien quet 1 ngon
+    last_swipe = {}                  # i -> moc thoi gian quet gan nhat cua tay do
+    open_since = {}                  # i -> moc thoi gian bat dau gio 5 ngon
+    fist_since = {}                  # i -> moc thoi gian bat dau nam tay
+    prev_nf = {}                     # i -> so ngon frame truoc (bat "canh len")
+
+    # --- state CHUNG cho anh dang hien (single anh, single goc xoay) ---
     mode = "NORMAL"                  # NORMAL | ROTATE
-    open_since = None                # moc thoi gian bat dau gio 5 ngon
-    fist_since = None                # moc thoi gian bat dau nam tay
+    rotate_hand = None               # chi so tay dang "cam quyen" xoay anh
     rotate = 0.0
     base_angle = None
-    prev_nf = -1                     # so ngon frame truoc (bat "canh len" cua cu chi)
     big_num = 0                      # so ngon dang hien to giua man hinh (3/4)
     big_until = 0.0                  # thoi diem se an so to di
 
@@ -167,21 +173,41 @@ def main():
         now = time.time()
         gesture = "-"
 
-        if res.hand_landmarks:
-            lm = res.hand_landmarks[0]
+        hands = res.hand_landmarks or []
+        present = set(range(len(hands)))
+
+        # ---- don dep state cua nhung tay khong con xuat hien ----
+        for d in (xs, last_swipe, open_since, fist_since, prev_nf):
+            for k in [kk for kk in d if kk not in present]:
+                del d[k]
+
+        # ---- tinh truoc landmark + so ngon + ve khung xuong cho MOI tay ----
+        hands_info = []              # list (i, pts, nf)
+        for i, lm in enumerate(hands):
             pts = [(p.x * fw, p.y * fh) for p in lm]
             nf = count_fingers(pts)
-            gesture = f"{nf} ngon"
             draw_hand(frame, pts)
+            hands_info.append((i, pts, nf))
 
+        if hands_info:
+            gesture = " ".join(f"T{i}:{nf}" for i, _, nf in hands_info)
+
+        # ---- neu tay dang cam quyen xoay da bien mat -> chuyen quyen cho tay khac ----
+        if mode == "ROTATE" and rotate_hand not in present:
+            rotate_hand = min(present) if present else None
+            base_angle = None         # gan lai moc de anh khong nhay khi doi tay
+
+        # ---- xu ly cu chi cho TUNG tay (state rieng, khong xung dot) ----
+        for i, pts, nf in hands_info:
             if mode == "NORMAL":
                 # ---- QUET doi anh bang 1 ngon (theo dau ngon tro, nhay hon) ----
                 if nf == 1:
+                    dq = xs.setdefault(i, deque(maxlen=12))
                     tipx = pts[8][0] / fw          # x dau ngon tro (chuan hoa 0..1)
-                    xs.append((now, tipx))
-                    if now - last_swipe > 0.5 and len(xs) >= 3:
-                        t0, x0 = xs[0]
-                        t1, x1 = xs[-1]
+                    dq.append((now, tipx))
+                    if now - last_swipe.get(i, 0.0) > 0.5 and len(dq) >= 3:
+                        t0, x0 = dq[0]
+                        t1, x1 = dq[-1]
                         if t1 - t0 < 0.6 and abs(x1 - x0) > 0.15 and images:
                             if x1 - x0 > 0:
                                 idx = (idx + 1) % len(images)
@@ -191,50 +217,54 @@ def main():
                                 gesture = "<- QUET TRAI"
                             cur = cv2.imread(images[idx])
                             rotate = 0.0
-                            last_swipe = now
-                            xs.clear()
-                else:
-                    xs.clear()
+                            last_swipe[i] = now
+                            dq.clear()
+                elif i in xs:
+                    xs[i].clear()
 
                 # ---- 2 ngon: reset anh ve trang thai ban dau (het xoay) ----
-                if nf == 2 and prev_nf != 2:
+                if nf == 2 and prev_nf.get(i) != 2:
                     rotate = 0.0
                     base_angle = None
                     gesture = "RESET ANH"
 
                 # ---- 3 / 4 ngon: hien so to giua man hinh roi tu bien mat ----
-                if nf in (3, 4) and prev_nf != nf:
+                if nf in (3, 4) and prev_nf.get(i) != nf:
                     big_num = nf
                     big_until = now + 1.0
 
                 # ---- gio 5 ngon giu ~0.8s -> vao che do XOAY ----
                 if nf >= 5:
-                    open_since = open_since or now
-                    if now - open_since > 0.8:
+                    open_since[i] = open_since.get(i) or now
+                    if now - open_since[i] > 0.8:
                         mode = "ROTATE"
+                        rotate_hand = i           # tay nay cam quyen xoay
                         base_angle = None
-                        open_since = None
+                        open_since.pop(i, None)
                 else:
-                    open_since = None
-                fist_since = None
-            else:  # ROTATE
+                    open_since.pop(i, None)
+                fist_since.pop(i, None)
+            else:  # ROTATE - chi tay dang cam quyen moi dieu khien goc xoay
+                if i != rotate_hand:
+                    continue
                 a = hand_angle(pts)
                 if base_angle is None:
                     base_angle = a - rotate   # giu anh khong nhay khi vao mode
                 rotate = a - base_angle
+                gesture = "XOAY ANH"
                 # nam tay giu ~0.8s -> thoat
                 if nf <= 1:
-                    fist_since = fist_since or now
-                    if now - fist_since > 0.8:
+                    fist_since[i] = fist_since.get(i) or now
+                    if now - fist_since[i] > 0.8:
                         mode = "NORMAL"
-                        fist_since = None
+                        rotate_hand = None
+                        fist_since.pop(i, None)
                 else:
-                    fist_since = None
-            prev_nf = nf
-        else:
-            xs.clear()
-            open_since = fist_since = None
-            prev_nf = -1
+                    fist_since.pop(i, None)
+
+        # ---- cap nhat so ngon frame truoc cho tung tay (bat "canh len") ----
+        for i, _, nf in hands_info:
+            prev_nf[i] = nf
 
         # ==== ve canvas hien thi ====
         canvas = np.full((H, W, 3), 25, np.uint8)

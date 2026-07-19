@@ -54,6 +54,8 @@ def draw_ship(frame, x, y):
 def main():
     ap = argparse.ArgumentParser(description="Ne thien thach bang khuon mat")
     ap.add_argument("--camera", type=int, default=0)
+    ap.add_argument("--max-faces", type=int, default=0,
+                    help="Gioi han so khuon mat (0 = khong gioi han)")
     args = ap.parse_args()
 
     use_dshow = os.name == "nt"
@@ -87,7 +89,7 @@ def main():
                 "lives": 3, "over": False, "frame": 0, "hit_flash": 0}
 
     G = new_game()
-    ship_x = None
+    ships = []          # danh sach vi tri x da lam muot cua tung phi thuyen
     frame_i = 0
 
     while True:
@@ -98,8 +100,6 @@ def main():
         h, w = frame.shape[:2]
         frame_i += 1
         G["frame"] += 1
-        if ship_x is None:
-            ship_x = w / 2
         ship_y = h - 70
 
         # ==== lam toi nen + ve sao chay ====
@@ -111,18 +111,28 @@ def main():
             cv2.circle(frame, (int(s[0] * w), int(s[1] * h)),
                        1 if s[2] < 3 else 2, (200, 200, 200), -1)
 
-        # ==== khuon mat -> vi tri phi thuyen ====
+        # ==== khuon mat -> vi tri cac phi thuyen ====
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         res = detector.detect_for_video(mp_img, frame_i * 33)
-        face_found = False
+
+        # tam cac khuon mat theo truc x (toa do PIXEL), sap xep trai -> phai
+        faces = []
         if res.detections:
-            box = res.detections[0].bounding_box     # toa do PIXEL
-            fx = box.origin_x + box.width / 2.0
-            ship_x = 0.7 * ship_x + 0.3 * fx         # lam muot
-            face_found = True
-        ship_x = float(np.clip(ship_x, SHIP_R, w - SHIP_R))
-        sx, sy = int(ship_x), int(ship_y)
+            for det in res.detections:
+                box = det.bounding_box               # toa do PIXEL
+                faces.append(box.origin_x + box.width / 2.0)
+            faces.sort()
+            if args.max_faces > 0:
+                faces = faces[:args.max_faces]
+        face_found = len(faces) > 0
+
+        # lam muot: ghep tung mat voi phi thuyen cu theo thu tu trai -> phai
+        new_ships = []
+        for i, fx in enumerate(faces):
+            sx = 0.7 * ships[i] + 0.3 * fx if i < len(ships) else fx
+            new_ships.append(float(np.clip(sx, SHIP_R, w - SHIP_R)))
+        ships = new_ships
 
         # ==== logic game ====
         if not G["over"]:
@@ -141,7 +151,10 @@ def main():
             for o in G["rocks"]:
                 o["y"] += o["vy"]
                 o["angle"] += o["spin"]
-                if math.hypot(o["x"] - ship_x, o["y"] - ship_y) < o["r"] + SHIP_R:
+                # bat ky phi thuyen nao bi trung -> mat 1 mang chung
+                hit = any(math.hypot(o["x"] - sx, o["y"] - ship_y) < o["r"] + SHIP_R
+                          for sx in ships)
+                if hit:
                     G["lives"] -= 1
                     G["hit_flash"] = 8
                     beep(300, 120)
@@ -158,7 +171,10 @@ def main():
             for b in G["bonus"]:
                 b["y"] += b["vy"]
                 b["a"] += 9
-                if math.hypot(b["x"] - ship_x, b["y"] - ship_y) < 18 + SHIP_R:
+                # bat ky phi thuyen nao hung duoc -> +10 diem chung
+                got = any(math.hypot(b["x"] - sx, b["y"] - ship_y) < 18 + SHIP_R
+                          for sx in ships)
+                if got:
                     G["score"] += 10
                     beep(1500, 90)
                     continue
@@ -192,7 +208,8 @@ def main():
             G["hit_flash"] -= 1
             cv2.rectangle(frame, (0, 0), (w, h), (0, 0, 255), 12)
         if not G["over"]:
-            draw_ship(frame, sx, sy)
+            for sx in ships:
+                draw_ship(frame, int(sx), int(ship_y))
 
         # ==== HUD ====
         cv2.rectangle(frame, (0, 0), (w, 50), (0, 0, 0), -1)

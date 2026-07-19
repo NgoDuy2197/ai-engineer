@@ -54,6 +54,8 @@ def main():
     ap = argparse.ArgumentParser(description="Ve trong khong khi bang ngon tay")
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--brush", type=int, default=8, help="Co net ve ban dau")
+    ap.add_argument("--max-hands", type=int, default=2,
+                    help="So ban tay toi da ve cung luc")
     args = ap.parse_args()
 
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -74,7 +76,7 @@ def main():
     options = mp_vision.HandLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=MODEL_PATH),
         running_mode=mp_vision.RunningMode.VIDEO,
-        num_hands=1,
+        num_hands=max(1, args.max_hands),
         min_hand_detection_confidence=0.6,
         min_tracking_confidence=0.5)
     landmarker = mp_vision.HandLandmarker.create_from_options(options)
@@ -82,7 +84,7 @@ def main():
     last_ts = -1
 
     canvas = None
-    prev = None                # diem ve truoc do
+    prev_pts = {}              # diem ve truoc do theo tung tay {chi_so_tay: (x, y)}
     color = PALETTE[0][1]
     color_name = PALETTE[0][0]
     brush = max(2, args.brush)
@@ -109,36 +111,37 @@ def main():
         res = landmarker.detect_for_video(mp_img, ts)
         mode = "NGHI"
 
-        if res.hand_landmarks:
-            lm = res.hand_landmarks[0]
+        # prev cho frame nay: chi giu lai cac chi so tay dang co
+        cur_prev = {}
+        for hi, lm in enumerate(res.hand_landmarks):
             pts = [(p.x * w, p.y * h) for p in lm]
             index_up = finger_up(pts, 8, 6)
             middle_up = finger_up(pts, 12, 10)
             ix, iy = int(pts[8][0]), int(pts[8][1])   # dau ngon tro
 
             if index_up and middle_up:
-                # ==== che do CHON ====
+                # ==== che do CHON (dung chung mau) ====
                 mode = "CHON"
-                prev = None
                 cv2.circle(frame, (ix, iy), 14, (200, 200, 200), 2)
                 if iy < bar_h:
                     slot = int(ix / (w / len(PALETTE)))
                     slot = max(0, min(len(PALETTE) - 1, slot))
                     color_name, color = PALETTE[slot][0], PALETTE[slot][1]
             elif index_up:
-                # ==== che do VE ====
-                mode = "VE"
+                # ==== che do VE (moi tay ve net rieng) ====
+                if mode != "CHON":
+                    mode = "VE"
                 is_eraser = color_name == "TAY"
                 size = brush * 5 if is_eraser else brush
                 draw_col = (0, 0, 0) if is_eraser else color
                 cv2.circle(frame, (ix, iy), size, draw_col, 2)
+                prev = prev_pts.get(hi)
                 if prev is not None:
                     cv2.line(canvas, prev, (ix, iy), draw_col, size * 2)
-                prev = (ix, iy)
-            else:
-                prev = None
-        else:
-            prev = None
+                cur_prev[hi] = (ix, iy)
+            # con lai (nam tay) -> khong luu prev cho tay nay -> nhac but
+
+        prev_pts = cur_prev
 
         # ==== ghep tranh len khung hinh ====
         gray = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
