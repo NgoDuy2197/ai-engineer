@@ -85,27 +85,6 @@ def make_default_wing(h=420):
     return img
 
 
-def load_wing():
-    """Nap canh trai: uu tien PNG moi nhat trong __data/wings, khong co thi ve mac dinh."""
-    ensure_dirs()
-    pngs = [os.path.join(WINGS_DIR, f) for f in os.listdir(WINGS_DIR)
-            if f.lower().endswith((".png", ".webp")) and "arrow" not in f.lower()]
-    if pngs:
-        newest = max(pngs, key=os.path.getmtime)
-        img = imread_unicode(newest, cv2.IMREAD_UNCHANGED)
-        if img is not None:
-            if img.ndim == 3 and img.shape[2] == 3:      # khong co alpha -> them alpha dac
-                a = np.full(img.shape[:2] + (1,), 255, np.uint8)
-                img = np.concatenate([img, a], axis=2)
-            print(f"[i] Dung canh: {os.path.basename(newest)}")
-            return img.astype(np.uint8)
-        print(f"[!] Khong doc duoc {newest} -> dung canh mac dinh.")
-    else:
-        print("[i] Chua co PNG trong __data/wings -> dung canh mac dinh. "
-              "Bo file canh_trai.png vao do de thay.")
-    return make_default_wing()
-
-
 def _load_rgba(path):
     img = imread_unicode(path, cv2.IMREAD_UNCHANGED)
     if img is None:
@@ -137,6 +116,27 @@ def load_arrow():
     return img
 
 
+def load_all_wings():
+    """Nap TAT CA anh canh trong __data/wings (tru arrow*), sap theo ten.
+
+    Tra list [(ten, bgra)]. Trong thi dung 1 canh mac dinh.
+    """
+    ensure_dirs()
+    files = sorted(f for f in os.listdir(WINGS_DIR)
+                   if f.lower().endswith((".png", ".webp")) and "arrow" not in f.lower())
+    out = []
+    for f in files:
+        img = _load_rgba(os.path.join(WINGS_DIR, f))
+        if img is not None:
+            out.append((os.path.splitext(f)[0], img))
+    if not out:
+        print("[i] Chua co PNG canh trong __data/wings -> dung canh mac dinh.")
+        out.append(("mac dinh", make_default_wing()))
+    else:
+        print(f"[i] Co {len(out)} canh: {', '.join(n for n, _ in out)}  (phim N de doi)")
+    return out
+
+
 def overlay_bgra(frame, bgra, x, y, alpha=1.0):
     """Dan sprite BGRA vao frame, goc tren-trai (x, y), tu cat vien."""
     bh, bw = bgra.shape[:2]
@@ -163,16 +163,21 @@ def place_wing(frame, wing_bgra, target, target_w, flip, angle, anchor_ratio):
     img = cv2.resize(img, (max(1, int(w0 * scale)), max(1, int(h0 * scale))),
                      interpolation=cv2.INTER_LINEAR)
     h, w = img.shape[:2]
+    # dem quanh canh de khi xoay (vay) khong bi cat mep
+    pad = int(max(h, w) * 0.5)
+    img = cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_CONSTANT,
+                             value=(0, 0, 0, 0))
+    hh, ww = img.shape[:2]
     ax_r = (1 - anchor_ratio[0]) if flip else anchor_ratio[0]
-    ax, ay = ax_r * w, anchor_ratio[1] * h
+    ax, ay = ax_r * w + pad, anchor_ratio[1] * h + pad
     m = cv2.getRotationMatrix2D((ax, ay), angle, 1.0)
-    img = cv2.warpAffine(img, m, (w, h), flags=cv2.INTER_LINEAR,
+    img = cv2.warpAffine(img, m, (ww, hh), flags=cv2.INTER_LINEAR,
                          borderValue=(0, 0, 0, 0))
     tx, ty = target
     overlay_bgra(frame, img, tx - ax, ty - ay)
     # tip = goc doi dien voi anchor (dau canh xoe ra)
-    tip_x = 0 if not flip else w
-    return (tx - ax + tip_x, ty - ay + h * 0.15)
+    tip_x = pad if not flip else pad + w
+    return (tx - ax + tip_x, ty - ay + pad + h * 0.1)
 
 
 def main():
@@ -202,7 +207,8 @@ def main():
         print(f"[!] Khong tai duoc model: {e}\n    Tai thu cong: {MODEL_URL}")
         return
 
-    wing = load_wing()
+    wings = load_all_wings()
+    wing_idx = 0
     arrow = load_arrow()
     anchor_ratio = (0.88, 0.5)   # goc canh trai o canh phai-giua cua anh
 
@@ -262,6 +268,7 @@ def main():
             res = landmarker.detect_for_video(mp_img, frame_i * 33)
 
             n_people = 0
+            wing_name, wing = wings[wing_idx]
             flap = math.sin(t * 6.0) * 18.0 if flap_on else 0.0   # goc dap canh
             orig = frame.copy()          # frame goc (chua ve canh) de dua nguoi len tren
             front_mask = None            # gop mask cua cac nguoi dang quay mat truoc
@@ -368,11 +375,12 @@ def main():
             fps = 0.9 * fps + 0.1 * (1.0 / max(now2 - prev_t, 1e-6))
             prev_t = now2
             cv2.rectangle(frame, (0, 0), (w, 30), (0, 0, 0), -1)
-            cv2.putText(frame, f"FPS:{fps:4.1f}  nguoi:{n_people}  "
-                        f"vay:{'BAT' if flap_on else 'TAT'}(F)  "
-                        f"hieu ung:{'BAT' if effect_on else 'TAT'}(E)  "
-                        f"canh:{behind_names[behind_mode]}(B)  +/-:co  Q:thoat",
-                        (8, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 180), 1)
+            cv2.putText(frame, f"FPS:{fps:4.1f} nguoi:{n_people} "
+                        f"vay(F):{'BAT' if flap_on else 'TAT'} "
+                        f"hieu ung(E):{'BAT' if effect_on else 'TAT'} "
+                        f"kieu(B):{behind_names[behind_mode]} "
+                        f"canh(N):{wing_name} +/-:co Q:thoat",
+                        (8, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 255, 180), 1)
 
             cv2.imshow(win, frame)
             k = cv2.waitKey(1) & 0xFF
@@ -384,6 +392,9 @@ def main():
                 effect_on = not effect_on
             elif k == ord("b"):
                 behind_mode = (behind_mode + 1) % 3
+            elif k == ord("n"):
+                wing_idx = (wing_idx + 1) % len(wings)
+                print(f"[i] Doi canh -> {wings[wing_idx][0]}")
             elif k in (ord("+"), ord("=")):
                 scale = min(4.5, scale + 0.2)
             elif k in (ord("-"), ord("_")):

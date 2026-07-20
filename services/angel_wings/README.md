@@ -4,8 +4,9 @@ Game camera: bắt người (1 hoặc nhiều người) rồi gắn đôi cánh 
 Có chế độ vẫy cánh và chế độ cánh phát hiệu ứng lấp lánh.
 
 ## Cách dùng ảnh của bạn (bỏ vào `__data/wings/`)
-- **Cánh**: 1 file PNG **cánh trái** (nền trong suốt). Cánh phải = tự lật gương.
-  Thư mục trống thì game tự vẽ cánh mặc định. Nhiều PNG → dùng file **mới nhất**.
+- **Cánh**: các file PNG **cánh trái** (nền trong suốt). Cánh phải = tự lật gương.
+  Thư mục trống thì game tự vẽ cánh mặc định. Nhiều PNG → bấm **`N`** để đổi cánh
+  lần lượt **theo tên** (a→b→c...). Tất cả PNG (trừ `arrow*`) đều được coi là cánh.
 - **Mũi tên**: đặt file có chữ **`arrow`** trong tên (vd `arrow_here.png`,
   `arrow_down.png`), nền trong. Nếu có, game gắn mũi tên chỉ vào đầu từng người,
   cách đầu 1 đoạn và **nhún lên xuống**. (File `arrow*` không bị nhầm thành cánh.)
@@ -42,6 +43,7 @@ Hoặc `__bat\setup_angel_wings.bat` rồi `__bat\start_angel_wings.bat`, hoặc
 | `F` | Bật/tắt vẫy cánh |
 | `E` | Bật/tắt hiệu ứng lấp lánh từ cánh |
 | `B` | Đổi kiểu cánh: AUTO / luôn sau lưng / luôn trên |
+| `N` | Đổi cánh kế tiếp (lần lượt theo tên file) |
 | `+` / `-` | Phóng to / thu nhỏ cánh |
 | `Q` / `ESC` | Thoát |
 
